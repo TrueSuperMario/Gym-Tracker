@@ -41,13 +41,13 @@ html.lock-scroll, html.lock-scroll body{ overflow:hidden; }
 #app{ height:100dvh; display:flex; flex-direction:column; }
 
 /* ---- iPhone touch ergonomics ---- */
-button, .day-chip, .pill, .split-tab{
+button, .day-chip, .pill, .split-tab, .history-head{
   touch-action:manipulation;
   -webkit-touch-callout:none;
   -webkit-user-select:none;
   user-select:none;
 }
-button:active, .pill:active, .split-tab:active, .day-chip:active{
+button:active, .pill:active, .split-tab:active, .day-chip:active, .history-head:active{
   transform:scale(0.96);
   opacity:0.85;
 }
@@ -266,9 +266,11 @@ input, select, textarea{ font-size:16px !important; }
 
 .history-entry{ border-bottom:1px solid var(--border); padding:12px 0; }
 .history-entry:last-child{ border-bottom:none; }
-.history-entry h3{ margin:0 0 6px; font-size:13px; font-weight:800; }
-.history-entry .h-date{ font-size:11px; color:var(--muted); margin-bottom:6px; }
-.history-entry .h-change{ font-size:12px; color:var(--muted); display:flex; justify-content:space-between; padding:2px 0; }
+.history-head{ display:flex; justify-content:space-between; align-items:center; gap:8px; cursor:pointer; padding:4px 0; min-height:44px; }
+.history-chevron{ color:var(--muted); font-size:13px; flex:0 0 auto; }
+.history-entry h3{ margin:0 0 4px; font-size:13px; font-weight:800; }
+.history-entry .h-date{ font-size:11px; color:var(--muted); }
+.history-entry .h-change{ font-size:12px; color:var(--muted); display:flex; justify-content:space-between; padding:5px 0 0; }
 
 .empty-state{ text-align:center; color:var(--muted); padding:60px 20px; font-size:14px; line-height:1.6; }
 .empty-state b{ color:var(--text); }
@@ -855,7 +857,7 @@ function renderSplitTabs(){
     const b = document.createElement('button');
     b.className = 'split-tab' + (STATE.split===key ? ' active':'');
     b.textContent = label;
-    b.addEventListener('click', ()=>{ STATE.split=key; saveState(); renderContent(); syncFab(); });
+    b.addEventListener('click', ()=>{ STATE.split=key; saveState(); renderSplitTabs(); renderContent(); });
     wrap.appendChild(b);
   });
   syncFab();
@@ -891,9 +893,12 @@ function renderContent(){
   list.forEach(ex => el.appendChild(renderExerciseCard(ex)));
 }
 
+function isCollapsed(ex){ return ex.collapsed !== false; } // undefined/true => collapsed by default
+
 function renderExerciseCard(ex){
   const card = document.createElement('div');
   card.className = 'ex-card';
+  const collapsed = isCollapsed(ex);
 
   const head = document.createElement('div');
   head.className = 'ex-head';
@@ -903,12 +908,18 @@ function renderExerciseCard(ex){
       <span class="badge ${ex.progression?'progression':'accessory'}">${ex.progression?'Progression':'Accessory'}</span>
     </div>
     <div class="ex-actions">
+      <button class="mini-btn collapse-btn" title="${collapsed?'Expand':'Collapse'}">${collapsed?'▸':'▾'}</button>
       <button class="mini-btn" title="Edit">✎</button>
       <button class="mini-btn danger" title="Delete exercise">✕</button>
     </div>`;
   const nameInput = head.querySelector('.ex-name');
   nameInput.addEventListener('change', ()=>{ ex.name = nameInput.value.trim() || ex.name; saveState(); });
   nameInput.addEventListener('input', ()=>{ nameInput.size = Math.max(6, nameInput.value.length); });
+  head.querySelector('.collapse-btn').addEventListener('click', ()=>{
+    ex.collapsed = !isCollapsed(ex);
+    saveState();
+    renderContent();
+  });
   head.querySelector('.mini-btn[title="Edit"]').addEventListener('click', ()=>openExerciseSheet(ex));
   head.querySelector('.mini-btn.danger').addEventListener('click', async ()=>{
     const ok = await askForConfirm({title:'Delete exercise?', message:`Delete ${ex.name}? This removes it from every week.`, confirmLabel:'Delete', danger:true});
@@ -918,6 +929,8 @@ function renderExerciseCard(ex){
     }
   });
   card.appendChild(head);
+
+  if(collapsed) return card;
 
   const targetLine = document.createElement('div');
   targetLine.className = 'target-line';
@@ -1123,7 +1136,7 @@ function closeRolloverModal(){ hideOverlay('rollover-overlay'); }
 function confirmRollover(pendingChanges){
   const changesForHistory = pendingChanges.map(pc=>({ name: pc.ex.name, old: pc.ex.baseline1RM, new: pc.newRM }));
   pendingChanges.forEach(pc=>{ pc.ex.baseline1RM = pc.newRM; });
-  STATE.history.unshift({ fromBlock: STATE.block, toBlock: STATE.block+1, date: new Date().toISOString().slice(0,10), changes: changesForHistory });
+  STATE.history.unshift({ id: uid(), fromBlock: STATE.block, toBlock: STATE.block+1, date: new Date().toISOString().slice(0,10), changes: changesForHistory });
   STATE.block += 1;
   STATE.week = 1;
   saveState();
@@ -1133,25 +1146,51 @@ function confirmRollover(pendingChanges){
 }
 
 /* ---------------- history modal ---------------- */
-function openHistoryModal(){
+let expandedHistoryIds = new Set(); // in-memory only — every entry starts collapsed each time the modal opens
+
+function renderHistoryList(){
   const el = document.getElementById('history-list');
   el.innerHTML = '';
   if(STATE.history.length===0){
     el.innerHTML = `<div class="empty-state" style="padding:24px 4px;">No completed blocks yet. Finish Week 5 to see your first rollover here.</div>`;
-  } else {
-    STATE.history.forEach(h=>{
-      const div = document.createElement('div');
-      div.className = 'history-entry';
-      div.innerHTML = `<h3>Block ${h.fromBlock} → Block ${h.toBlock}</h3><div class="h-date">${h.date}</div>`;
+    return;
+  }
+  STATE.history.forEach((h, i)=>{
+    const key = h.id || `idx-${i}`;
+    const expanded = expandedHistoryIds.has(key);
+    const div = document.createElement('div');
+    div.className = 'history-entry';
+
+    const head = document.createElement('div');
+    head.className = 'history-head';
+    const progressedCount = h.changes.filter(c=>c.new!==c.old).length;
+    head.innerHTML = `
+      <div>
+        <h3>Block ${h.fromBlock} → Block ${h.toBlock}</h3>
+        <div class="h-date">${h.date} · ${progressedCount}/${h.changes.length} lifts progressed</div>
+      </div>
+      <span class="history-chevron">${expanded ? '▾' : '▸'}</span>`;
+    head.addEventListener('click', ()=>{
+      if(expanded) expandedHistoryIds.delete(key); else expandedHistoryIds.add(key);
+      renderHistoryList();
+    });
+    div.appendChild(head);
+
+    if(expanded){
       h.changes.forEach(c=>{
         const line = document.createElement('div');
         line.className = 'h-change';
         line.innerHTML = `<span>${escapeAttr(c.name)}</span><span>${fmt(c.old)} → ${fmt(c.new)} kg</span>`;
         div.appendChild(line);
       });
-      el.appendChild(div);
-    });
-  }
+    }
+    el.appendChild(div);
+  });
+}
+
+function openHistoryModal(){
+  expandedHistoryIds = new Set();
+  renderHistoryList();
   showOverlay('history-overlay');
   renderCloudStatus();
 }
