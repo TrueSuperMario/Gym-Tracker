@@ -1,0 +1,1259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<title>Iron Ledger</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Iron Ledger">
+<style>
+:root{
+  color-scheme: dark;
+  --bg:#020617;
+  --surface:#0f172a;
+  --surface-2:#1e293b;
+  --surface-3:#27374d;
+  --border:#334155;
+  --text:#f1f5f9;
+  --muted:#94a3b8;
+  --emerald:#10b981;
+  --emerald-dim:#064e3b;
+  --amber:#f59e0b;
+  --amber-dim:#78350f;
+  --red:#ef4444;
+  --radius:16px;
+}
+/* Deliberately dark-only: this is a gym-floor UI meant to be legible under low light,
+   so it does not adapt to system light mode. */
+:root[data-theme="light"]{ color-scheme: dark; }
+
+*{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html,body{
+  margin:0; height:100%;
+  background:var(--bg); color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;
+  overscroll-behavior-y:none;
+}
+:root{ padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px); }
+html{ scroll-padding-top:env(safe-area-inset-top,0px); }
+html.lock-scroll, html.lock-scroll body{ overflow:hidden; }
+#app{ height:100dvh; display:flex; flex-direction:column; }
+
+/* ---- iPhone touch ergonomics ---- */
+button, .day-chip, .pill, .split-tab{
+  touch-action:manipulation;
+  -webkit-touch-callout:none;
+  -webkit-user-select:none;
+  user-select:none;
+}
+button:active, .pill:active, .split-tab:active, .day-chip:active{
+  transform:scale(0.96);
+  opacity:0.85;
+}
+.fab:active{ transform:scale(0.92); }
+/* iOS zooms the page if a focused input's font-size is under 16px — keep every input at 16px */
+input, select, textarea{ font-size:16px !important; }
+
+/* ---- topbar ---- */
+.topbar{
+  padding:calc(env(safe-area-inset-top,0px) + 12px) 16px 10px;
+  background:var(--surface);
+  border-bottom:1px solid var(--border);
+  flex:0 0 auto;
+}
+.topbar-row{ display:flex; align-items:center; justify-content:space-between; }
+.topbar-title{ display:flex; flex-direction:column; }
+.topbar-title .block-lbl{ font-size:11px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--emerald); }
+.topbar-title h1{ margin:2px 0 0; font-size:22px; font-weight:800; letter-spacing:-0.02em; }
+.icon-row{ display:flex; gap:8px; }
+.icon-btn{
+  width:44px;height:44px;border-radius:11px;border:1px solid var(--border);
+  background:var(--surface-2); color:var(--text); font-size:16px;
+  display:flex;align-items:center;justify-content:center;
+  flex:0 0 auto;
+}
+.advance-btn{
+  width:auto; height:44px; padding:0 14px; font-size:12px; font-weight:800;
+  background:var(--emerald-dim); border-color:var(--emerald); color:var(--emerald);
+  white-space:nowrap;
+}
+
+.week-pills{ display:flex; gap:6px; margin-top:12px; }
+.pill{
+  flex:1; min-height:44px; text-align:center; padding:9px 0; border-radius:10px;
+  border:1px solid var(--border); background:var(--surface-2);
+  font-size:12px; font-weight:700; color:var(--muted);
+  display:flex; align-items:center; justify-content:center;
+}
+.pill.active{ background:var(--emerald); border-color:var(--emerald); color:#022c22; }
+.pill.recovery{ border-style:dashed; }
+
+.split-tabs{ display:flex; gap:6px; margin-top:8px; }
+.split-tab{
+  flex:1; min-height:44px; text-align:center; padding:9px 4px; border-radius:10px;
+  border:1px solid var(--border); background:transparent; color:var(--muted);
+  font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.03em;
+  display:flex; align-items:center; justify-content:center;
+}
+.split-tab.active{ background:var(--surface-3); color:var(--text); border-color:var(--text); }
+
+.content{
+  flex:1; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch;
+  overscroll-behavior:contain;
+  padding:14px 14px calc(env(safe-area-inset-bottom,0px) + 96px);
+}
+
+.rollover-banner{
+  background:linear-gradient(135deg,var(--emerald-dim),var(--surface-2));
+  border:1px solid var(--emerald);
+  border-radius:var(--radius);
+  padding:14px;
+  margin-bottom:14px;
+  text-align:center;
+}
+.rollover-banner p{ margin:0 0 10px; font-size:13px; color:var(--text); }
+.rollover-banner button{
+  width:100%; padding:13px; border:none; border-radius:12px;
+  background:var(--emerald); color:#022c22; font-weight:800; font-size:14px;
+}
+
+/* ---- exercise cards ---- */
+.ex-card{
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--radius); padding:14px; margin-bottom:12px;
+}
+.ex-head{ display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
+.ex-name-row{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.ex-name{
+  font-size:16px; font-weight:800; background:none; border:none; color:var(--text);
+  padding:2px 4px; border-radius:6px; max-width:180px;
+}
+.ex-name:focus{ outline:1px solid var(--emerald); background:var(--surface-2); }
+.badge{
+  font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.05em;
+  padding:3px 7px; border-radius:6px; flex:0 0 auto;
+}
+.badge.progression{ background:var(--emerald-dim); color:var(--emerald); }
+.badge.accessory{ background:var(--surface-3); color:var(--muted); }
+.ex-actions{ display:flex; gap:6px; flex:0 0 auto; }
+.mini-btn{
+  width:40px;height:40px; border-radius:9px; border:1px solid var(--border);
+  background:var(--surface-2); color:var(--muted); font-size:14px;
+  display:flex;align-items:center;justify-content:center;
+  flex:0 0 auto;
+}
+.mini-btn.danger{ color:var(--red); border-color:#7f1d1d; }
+
+.target-line{ font-size:12px; color:var(--muted); margin:8px 0 10px; }
+.target-line b{ color:var(--text); }
+
+.set-row{
+  border:1px solid var(--border); border-radius:12px; background:var(--surface-2);
+  padding:10px; margin-bottom:8px;
+}
+.set-row.logged{ border-color:var(--emerald); }
+.set-row.amrap{ border-color:var(--amber); background:linear-gradient(135deg,var(--amber-dim),var(--surface-2)); }
+.set-row-top{ display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+.set-idx{ font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; }
+.amrap-badge{
+  font-size:10px; font-weight:800; color:#1a1206; background:var(--amber);
+  padding:2px 8px; border-radius:6px; letter-spacing:.04em;
+}
+.set-row-target{ font-size:11px; color:var(--muted); }
+.set-fields{ display:flex; flex-direction:column; gap:8px; }
+.set-fields-top{ display:flex; align-items:flex-start; gap:8px; }
+.set-fields-top > div{ flex:1; min-width:0; }
+.set-fields-bottom{ display:flex; gap:8px; }
+.stepper{ display:flex; align-items:center; background:var(--surface); border:1px solid var(--border); border-radius:10px; overflow:hidden; height:44px; }
+.stepper button{ width:40px; height:44px; flex:0 0 auto; border:none; background:transparent; color:var(--text); font-size:18px; font-weight:700; }
+.stepper input{
+  flex:1; min-width:0; width:100%; text-align:center; background:transparent; border:none; color:var(--text);
+  font-weight:700; -moz-appearance:textfield;
+}
+.stepper input::-webkit-outer-spin-button, .stepper input::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
+.stepper-label{ font-size:9px; color:var(--muted); text-align:center; display:block; margin-top:3px; }
+.log-btn{
+  flex:1; height:44px; border-radius:10px; border:none;
+  background:var(--surface-3); color:var(--text); font-size:13px; font-weight:800;
+}
+.set-row.logged .log-btn{ background:var(--emerald); color:#022c22; }
+.set-trash{ flex:0 0 44px; height:44px; border-radius:10px; border:1px solid var(--border); background:transparent; color:var(--red); font-size:15px; }
+
+.amrap-projection{
+  margin-top:8px; font-size:12px; color:var(--amber); font-weight:700;
+  display:none;
+}
+.amrap-projection.show{ display:block; }
+
+.add-set-btn{
+  width:100%; min-height:44px; padding:9px; border-radius:10px; border:1px dashed var(--border);
+  background:transparent; color:var(--muted); font-size:12px; margin-top:2px;
+}
+
+.fab{
+  position:fixed; right:18px; bottom:calc(env(safe-area-inset-bottom,0px) + 20px);
+  width:56px; height:56px; border-radius:28px; border:none;
+  background:var(--emerald); color:#022c22; font-size:26px; font-weight:800;
+  box-shadow:0 8px 24px rgba(16,185,129,.35); z-index:20;
+}
+
+/* ---- cardio ---- */
+.cardio-entry{
+  background:var(--surface); border:1px solid var(--border); border-radius:12px;
+  padding:12px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;
+}
+.cardio-entry .ce-main{ font-size:13px; font-weight:700; }
+.cardio-entry .ce-sub{ font-size:11px; color:var(--muted); margin-top:2px; }
+
+/* ---- sheet / modal overlay ---- */
+.overlay{
+  position:fixed; inset:0; background:rgba(2,6,23,.72);
+  display:flex; align-items:flex-end; justify-content:center; z-index:40;
+}
+.overlay.hidden{ display:none; }
+.sheet{
+  width:100%; max-width:480px; background:var(--surface);
+  border-radius:20px 20px 0 0; border:1px solid var(--border); border-bottom:none;
+  padding:10px 18px calc(env(safe-area-inset-bottom,0px) + 18px);
+  max-height:88vh; overflow-y:auto; overscroll-behavior:contain;
+}
+.sheet-handle{
+  width:36px; height:5px; border-radius:3px; background:var(--border);
+  margin:0 auto 14px;
+}
+.modal-card{
+  width:calc(100% - 32px); max-width:440px; background:var(--surface);
+  border-radius:18px; border:1px solid var(--border); padding:18px;
+  margin:auto; max-height:88vh; overflow-y:auto; overscroll-behavior:contain;
+}
+.sheet h2, .modal-card h2{ margin:0 0 14px; font-size:17px; font-weight:800; }
+.field{ margin-bottom:12px; }
+.field label{ display:block; font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin-bottom:5px; }
+.field input[type=text], .field input[type=number], .field input[type=date], .field select{
+  width:100%; padding:11px; border-radius:10px; border:1px solid var(--border);
+  background:var(--surface-2); color:var(--text); font-size:14px; font-weight:600;
+}
+.toggle-row{ display:flex; justify-content:space-between; align-items:center; padding:6px 0; min-height:44px; }
+.toggle{
+  width:46px; height:27px; border-radius:14px; background:var(--surface-3); border:1px solid var(--border);
+  position:relative; flex:0 0 auto;
+}
+.toggle .knob{ position:absolute; top:2px; left:2px; width:21px; height:21px; border-radius:50%; background:var(--muted); transition:.15s; }
+.toggle.on{ background:var(--emerald-dim); border-color:var(--emerald); }
+.toggle.on .knob{ left:21px; background:var(--emerald); }
+.two-col{ display:flex; gap:10px; }
+.two-col .field{ flex:1; }
+.sheet-actions, .modal-actions{ display:flex; gap:10px; margin-top:6px; }
+.backup-section{ border-top:1px solid var(--border); margin-top:16px; padding-top:14px; }
+.backup-title{ margin:0 0 6px; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); font-weight:700; }
+.backup-note{ font-size:12px; color:var(--muted); margin:0 0 10px; line-height:1.5; }
+.backup-actions{ display:flex; gap:10px; }
+.btn{
+  flex:1; min-height:46px; padding:13px; border-radius:12px; border:1px solid var(--border);
+  background:var(--surface-2); color:var(--text); font-weight:800; font-size:14px;
+}
+.btn.primary{ background:var(--emerald); border-color:var(--emerald); color:#022c22; }
+
+.rollover-list{ max-height:44vh; overflow-y:auto; overscroll-behavior:contain; margin-bottom:14px; }
+.rollover-row{
+  display:flex; justify-content:space-between; align-items:center;
+  padding:10px 0; border-bottom:1px solid var(--border); font-size:13px;
+}
+.rollover-row:last-child{ border-bottom:none; }
+.rollover-row .delta.up{ color:var(--emerald); }
+.rollover-row .delta.flat{ color:var(--muted); }
+
+.history-entry{ border-bottom:1px solid var(--border); padding:12px 0; }
+.history-entry:last-child{ border-bottom:none; }
+.history-entry h3{ margin:0 0 6px; font-size:13px; font-weight:800; }
+.history-entry .h-date{ font-size:11px; color:var(--muted); margin-bottom:6px; }
+.history-entry .h-change{ font-size:12px; color:var(--muted); display:flex; justify-content:space-between; padding:2px 0; }
+
+.empty-state{ text-align:center; color:var(--muted); padding:60px 20px; font-size:14px; line-height:1.6; }
+.empty-state b{ color:var(--text); }
+
+.toast{
+  position:fixed; left:50%; bottom:calc(env(safe-area-inset-bottom,0px) + 90px);
+  transform:translateX(-50%); background:var(--emerald); color:#022c22;
+  padding:10px 18px; border-radius:20px; font-size:13px; font-weight:800;
+  box-shadow:0 6px 20px rgba(0,0,0,.4); z-index:60; transition:.25s;
+}
+.toast.hidden{ opacity:0; pointer-events:none; transform:translateX(-50%) translateY(8px); }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <header class="topbar">
+    <div class="topbar-row">
+      <div class="topbar-title">
+        <span class="block-lbl" id="block-lbl">Block 1</span>
+        <h1 id="week-lbl">Week 1</h1>
+      </div>
+      <div class="icon-row">
+        <button class="icon-btn advance-btn" id="advance-week-btn" title="Advance to next week">Advance Week</button>
+        <button class="icon-btn" id="history-btn" title="Block history">▤</button>
+      </div>
+    </div>
+    <div class="week-pills" id="week-pills"></div>
+    <div class="split-tabs" id="split-tabs"></div>
+  </header>
+
+  <div class="content" id="content"></div>
+
+  <button class="fab" id="fab">+</button>
+</div>
+
+<!-- Add/Edit exercise sheet -->
+<div class="overlay hidden" id="ex-sheet-overlay">
+  <div class="sheet" id="ex-sheet">
+    <div class="sheet-handle"></div>
+    <h2 id="ex-sheet-title">Add Exercise</h2>
+    <div class="field">
+      <label>Exercise name</label>
+      <input type="text" id="f-name" placeholder="e.g. Bench Press">
+    </div>
+    <div class="field">
+      <label>Day</label>
+      <select id="f-split">
+        <option value="push">Push</option>
+        <option value="pull">Pull</option>
+        <option value="legs">Legs</option>
+      </select>
+    </div>
+    <div class="toggle-row">
+      <label style="font-size:14px;font-weight:700;">Progression exercise</label>
+      <button class="toggle" id="f-progression-toggle"><span class="knob"></span></button>
+    </div>
+
+    <div id="progression-fields">
+      <div class="two-col">
+        <div class="field">
+          <label>Baseline 1RM (kg)</label>
+          <input type="number" id="f-baseline" inputmode="decimal" placeholder="100">
+        </div>
+        <div class="field">
+          <label>Reps per set (W1–3)</label>
+          <input type="number" id="f-reps-target" inputmode="numeric" placeholder="5">
+        </div>
+      </div>
+    </div>
+    <div id="accessory-fields">
+      <div class="two-col">
+        <div class="field">
+          <label>Target weight (kg)</label>
+          <input type="number" id="f-acc-weight" inputmode="decimal" placeholder="20">
+        </div>
+        <div class="field">
+          <label>Target reps</label>
+          <input type="text" id="f-acc-reps" placeholder="8-12">
+        </div>
+      </div>
+    </div>
+    <div class="field">
+      <label>Number of sets</label>
+      <input type="number" id="f-sets" inputmode="numeric" placeholder="4" min="1" max="8">
+    </div>
+    <div class="sheet-actions">
+      <button class="btn" id="ex-cancel-btn">Cancel</button>
+      <button class="btn primary" id="ex-save-btn">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Cardio sheet -->
+<div class="overlay hidden" id="cardio-sheet-overlay">
+  <div class="sheet" id="cardio-sheet">
+    <div class="sheet-handle"></div>
+    <h2>Log Cardio</h2>
+    <div class="field"><label>Date</label><input type="date" id="c-date"></div>
+    <div class="field">
+      <label>Activity</label>
+      <select id="c-activity">
+        <option>Run</option><option>Bike</option><option>Row</option><option>Swim</option><option>Other</option>
+      </select>
+    </div>
+    <div class="two-col">
+      <div class="field"><label>Distance (km)</label><input type="number" id="c-distance" inputmode="decimal" placeholder="5"></div>
+      <div class="field"><label>Duration (min)</label><input type="number" id="c-duration" inputmode="decimal" placeholder="30"></div>
+    </div>
+    <div class="field"><label>Avg heart rate (bpm)</label><input type="number" id="c-hr" inputmode="numeric" placeholder="145"></div>
+    <div class="sheet-actions">
+      <button class="btn" id="cardio-cancel-btn">Cancel</button>
+      <button class="btn primary" id="cardio-save-btn">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Rollover confirm modal -->
+<div class="overlay hidden" id="rollover-overlay">
+  <div class="modal-card">
+    <h2 id="rollover-title">Advance to Block 2</h2>
+    <div class="rollover-list" id="rollover-list"></div>
+    <div class="modal-actions">
+      <button class="btn" id="rollover-cancel-btn">Cancel</button>
+      <button class="btn primary" id="rollover-confirm-btn">Confirm & Advance</button>
+    </div>
+  </div>
+</div>
+
+<!-- History modal -->
+<div class="overlay hidden" id="history-overlay">
+  <div class="modal-card">
+    <h2>Block History</h2>
+    <div id="history-list" style="max-height:60vh;overflow-y:auto;overscroll-behavior:contain;"></div>
+
+    <div class="backup-section">
+      <h3 class="backup-title">Local Backup</h3>
+      <p class="backup-note">Your data lives only on this device. Export a backup now and then, or before switching phones.</p>
+      <div class="backup-actions">
+        <button class="btn" id="export-btn">Export Backup</button>
+        <button class="btn" id="import-btn">Import Backup</button>
+      </div>
+      <input type="file" id="import-file" accept="application/json,.json" style="display:none;">
+    </div>
+
+    <div class="backup-section">
+      <h3 class="backup-title">Cloud Backup</h3>
+      <p class="backup-note" id="cloud-status-note">Not set up yet — protects your data if this phone is lost, wiped, or replaced.</p>
+      <div class="backup-actions">
+        <button class="btn" id="cloud-backup-btn">Backup to Cloud</button>
+        <button class="btn" id="cloud-restore-btn">Restore from Cloud</button>
+      </div>
+      <button class="btn" id="cloud-setup-btn" style="width:100%;margin-top:8px;">Cloud Backup Settings</button>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn primary" id="history-close-btn" style="flex:1;">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Generic confirm modal (replaces native confirm(), same reason as above) -->
+<div class="overlay hidden" id="confirm-overlay">
+  <div class="modal-card" id="confirm-card">
+    <h2 id="confirm-title">Are you sure?</h2>
+    <p class="backup-note" id="confirm-message"></p>
+    <div class="modal-actions">
+      <button class="btn" id="confirm-cancel">Cancel</button>
+      <button class="btn primary" id="confirm-ok">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- Generic text-input sheet (replaces native prompt(), which is blocked in some embedded viewers) -->
+<div class="overlay hidden" id="text-input-overlay">
+  <div class="sheet" id="text-input-sheet">
+    <div class="sheet-handle"></div>
+    <h2 id="text-input-title">Enter value</h2>
+    <p class="backup-note" id="text-input-subtitle" style="display:none;"></p>
+    <div class="field">
+      <input type="text" id="text-input-field" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+    </div>
+    <div class="sheet-actions">
+      <button class="btn" id="text-input-cancel">Cancel</button>
+      <button class="btn primary" id="text-input-confirm">Continue</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script>
+/* ============================================================
+   Iron Ledger — 5-week block periodization PPL tracker
+   Local-only (localStorage), self-contained, offline-first.
+   ============================================================ */
+const STORAGE_KEY = 'iron_ledger_v2';
+const WEEK_PCT = {1:70, 2:75, 3:80, 4:85, 5:42.5};
+const ROUND_STEP = 2.5;
+const MAX_SETS = 8;
+
+function uid(){ return Math.random().toString(36).slice(2,10); }
+function roundPlate(w){ return Math.round(w/ROUND_STEP)*ROUND_STEP; }
+function fmt(n){ if(n===''||n===null||n===undefined||isNaN(n)) return '—'; const r=Math.round(n*10)/10; return String(r); }
+
+function epley(w,r){ return w*(1+r/30); }
+function brzycki(w,r){ return r>=37 ? w : w*36/(37-r); }
+function composite1RM(w,r){ if(r<=1) return w; return (epley(w,r)+brzycki(w,r))/2; }
+
+/* ---------------- seed ---------------- */
+function seedExercises(){
+  const P = (name, split, progression, extra) => ({
+    id: uid(), name, split, progression, sets: extra.sets||4,
+    baseline1RM: extra.baseline1RM||0, repsTarget: extra.repsTarget||5,
+    accessoryWeight: extra.accessoryWeight||0, accessoryReps: extra.accessoryReps||'8-12'
+  });
+  return [
+    P('Bench Press','push',true,{baseline1RM:80, repsTarget:5, sets:4}),
+    P('Overhead Press','push',true,{baseline1RM:47.5, repsTarget:5, sets:4}),
+    P('Incline DB Press','push',false,{accessoryWeight:17.5, accessoryReps:'8-12', sets:3}),
+    P('Triceps Pushdown','push',false,{accessoryWeight:25, accessoryReps:'8-12', sets:3}),
+    P('Lat Raise','push',false,{accessoryWeight:6, accessoryReps:'15-20', sets:3}),
+    P('Weighted Dips','push',false,{accessoryWeight:25, accessoryReps:'8-12', sets:3}),
+
+    P('Deadlift','pull',true,{baseline1RM:160, repsTarget:5, sets:4}),
+    P('Barbell Row','pull',false,{accessoryWeight:65, accessoryReps:'8-10', sets:3}),
+    P('Pull-ups','pull',false,{accessoryWeight:0, accessoryReps:'8-12', sets:3}),
+    P('Chest Supported Row','pull',false,{accessoryWeight:25, accessoryReps:'8-12', sets:3}),
+    P('Face Pulls','pull',false,{accessoryWeight:17.5, accessoryReps:'15-20', sets:3}),
+    P('Shoulder Shrugs','pull',false,{accessoryWeight:35, accessoryReps:'15-20', sets:3}),
+
+    P('Squat','legs',true,{baseline1RM:130, repsTarget:5, sets:4}),
+    P('Romanian Deadlift','legs',false,{accessoryWeight:67.5, accessoryReps:'8-12', sets:3}),
+    P('Leg Press','legs',false,{accessoryWeight:150, accessoryReps:'8-12', sets:3}),
+    P('Leg Curl','legs',false,{accessoryWeight:45, accessoryReps:'8-12', sets:3}),
+    P('Leg Extension','legs',false,{accessoryWeight:45, accessoryReps:'8-12', sets:3}),
+    P('Split Squats','legs',false,{accessoryWeight:0, accessoryReps:'12', sets:3}),
+  ];
+}
+
+/* ---------------- state ---------------- */
+function defaultState(){
+  return { block:1, week:1, split:'push', exercises: seedExercises(), logs:{}, cardio:[], history:[], seeded:true };
+}
+let STATE = null;
+
+function loadState(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(raw){ STATE = JSON.parse(raw); return; }
+  }catch(e){ console.error('load failed', e); }
+  STATE = defaultState();
+}
+function saveState(){
+  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(STATE)); }catch(e){ console.error('save failed', e); }
+}
+
+/* ---------------- overlay helpers (scroll lock + dismiss) ---------------- */
+function anyOverlayOpen(){
+  return ['ex-sheet-overlay','cardio-sheet-overlay','rollover-overlay','history-overlay','confirm-overlay','text-input-overlay']
+    .some(id => !document.getElementById(id).classList.contains('hidden'));
+}
+function showOverlay(id){
+  document.getElementById(id).classList.remove('hidden');
+  document.documentElement.classList.add('lock-scroll');
+}
+function hideOverlay(id){
+  document.getElementById(id).classList.add('hidden');
+  if(!anyOverlayOpen()) document.documentElement.classList.remove('lock-scroll');
+}
+function wireOverlayDismiss(overlayId, onClose){
+  const overlay = document.getElementById(overlayId);
+  overlay.addEventListener('click', (e)=>{ if(e.target === overlay) onClose(); });
+}
+function wireSheetSwipeDown(sheetId, onClose){
+  const sheet = document.getElementById(sheetId);
+  let startY = null, currentY = null;
+  sheet.addEventListener('touchstart', (e)=>{
+    if(sheet.scrollTop > 0) { startY = null; return; }
+    startY = e.touches[0].clientY;
+    sheet.style.transition = 'none';
+  }, {passive:true});
+  sheet.addEventListener('touchmove', (e)=>{
+    if(startY===null) return;
+    currentY = e.touches[0].clientY;
+    const dy = currentY - startY;
+    if(dy > 0) sheet.style.transform = `translateY(${dy}px)`;
+  }, {passive:true});
+  sheet.addEventListener('touchend', ()=>{
+    sheet.style.transition = 'transform 0.2s ease';
+    if(startY===null || currentY===null){ startY=null; currentY=null; return; }
+    const dy = currentY - startY;
+    sheet.style.transform = '';
+    if(dy > 90) onClose();
+    startY = null; currentY = null;
+  });
+}
+
+/* ---------------- generic confirm modal (replaces confirm(), same reason as askForText) ---------------- */
+function askForConfirm({title='Are you sure?', message='', confirmLabel='Confirm', danger=false, infoOnly=false}){
+  return new Promise((resolve)=>{
+    document.getElementById('confirm-title').textContent = title;
+    document.getElementById('confirm-message').textContent = message;
+    const okBtn = document.getElementById('confirm-ok');
+    const cancelBtn = document.getElementById('confirm-cancel');
+    okBtn.textContent = confirmLabel;
+    okBtn.style.background = danger ? 'var(--red)' : '';
+    okBtn.style.borderColor = danger ? 'var(--red)' : '';
+    okBtn.style.color = danger ? '#fff' : '';
+    cancelBtn.style.display = infoOnly ? 'none' : '';
+    showOverlay('confirm-overlay');
+    function cleanup(v){
+      hideOverlay('confirm-overlay');
+      okBtn.removeEventListener('click', onOk);
+      cancelBtn.removeEventListener('click', onCancel);
+      resolve(v);
+    }
+    function onOk(){ cleanup(true); }
+    function onCancel(){ cleanup(false); }
+    okBtn.addEventListener('click', onOk);
+    cancelBtn.addEventListener('click', onCancel);
+  });
+}
+
+/* ---------------- generic text-input modal (replaces prompt(), which some embedded viewers block silently) ---------------- */
+function askForText({title, subtitle='', placeholder='', initial='', masked=false, confirmLabel='Continue'}){
+  return new Promise((resolve)=>{
+    document.getElementById('text-input-title').textContent = title;
+    const subtitleEl = document.getElementById('text-input-subtitle');
+    if(subtitle){ subtitleEl.textContent = subtitle; subtitleEl.style.display = 'block'; }
+    else { subtitleEl.style.display = 'none'; }
+    const input = document.getElementById('text-input-field');
+    input.type = masked ? 'password' : 'text';
+    input.placeholder = placeholder;
+    input.value = initial;
+    document.getElementById('text-input-confirm').textContent = confirmLabel;
+
+    showOverlay('text-input-overlay');
+    setTimeout(()=>{ input.focus(); }, 60);
+
+    const confirmBtn = document.getElementById('text-input-confirm');
+    const cancelBtn = document.getElementById('text-input-cancel');
+
+    function cleanup(value){
+      hideOverlay('text-input-overlay');
+      confirmBtn.removeEventListener('click', onConfirm);
+      cancelBtn.removeEventListener('click', onCancel);
+      input.removeEventListener('keydown', onKeydown);
+      resolve(value);
+    }
+    function onConfirm(){ cleanup(input.value.trim() || null); }
+    function onCancel(){ cleanup(null); }
+    function onKeydown(e){ if(e.key === 'Enter'){ e.preventDefault(); onConfirm(); } }
+
+    confirmBtn.addEventListener('click', onConfirm);
+    cancelBtn.addEventListener('click', onCancel);
+    input.addEventListener('keydown', onKeydown);
+  });
+}
+
+/* ---------------- cloud backup (Supabase-backed, passphrase-gated) ---------------- */
+const CLOUD_CFG_KEY = 'iron_ledger_cloud_cfg';
+function getCloudCfg(){
+  try{ return JSON.parse(localStorage.getItem(CLOUD_CFG_KEY)) || null; }catch(e){ return null; }
+}
+function setCloudCfg(cfg){ localStorage.setItem(CLOUD_CFG_KEY, JSON.stringify(cfg)); }
+
+async function callSupabaseRPC(cfg, fnName, args){
+  const res = await fetch(`${cfg.url.replace(/\/$/,'')}/rest/v1/rpc/${fnName}`, {
+    method:'POST',
+    headers:{
+      'Content-Type':'application/json',
+      'apikey': cfg.anonKey,
+      'Authorization': `Bearer ${cfg.anonKey}`
+    },
+    body: JSON.stringify(args)
+  });
+  if(!res.ok){
+    let detail = '';
+    try{
+      const body = await res.json();
+      detail = body.message || body.hint || body.error_description || JSON.stringify(body);
+    }catch(e){
+      detail = await res.text().catch(()=> '');
+    }
+    throw new Error(`HTTP ${res.status}: ${detail || 'no details returned'}`);
+  }
+  return res.json().catch(()=>null);
+}
+
+async function openCloudSetup(){
+  const cfg = getCloudCfg() || {};
+  const url = await askForText({
+    title:'Supabase Project URL',
+    subtitle:'Settings → API → Project URL',
+    placeholder:'https://xxxx.supabase.co',
+    initial: cfg.url || ''
+  });
+  if(url===null) return;
+  const key = await askForText({
+    title:'Supabase anon public key',
+    subtitle:'Settings → API → anon public (not service_role)',
+    placeholder:'eyJhbGciOi...',
+    initial: cfg.anonKey || ''
+  });
+  if(key===null) return;
+  if(!url || !key){ showToast('Both fields are required'); return; }
+  setCloudCfg({...cfg, url, anonKey:key});
+  renderCloudStatus();
+  showToast('Cloud backup configured');
+}
+
+async function backupToCloud(){
+  let cfg = getCloudCfg();
+  if(!cfg || !cfg.url || !cfg.anonKey){ showToast('Set up Cloud Backup Settings first'); return; }
+  let pin = cfg.pin;
+  if(!pin){
+    pin = await askForText({
+      title:'Set a backup passphrase',
+      subtitle:"You'll need this to restore on another device — more than a 4-digit PIN is safer.",
+      masked:true, confirmLabel:'Set & Back Up'
+    });
+    if(!pin) return;
+    cfg.pin = pin; setCloudCfg(cfg);
+  }
+  showToast('Backing up…');
+  try{
+    await callSupabaseRPC(cfg, 'save_backup', {pin, backup_data: STATE});
+    cfg.lastBackup = new Date().toISOString();
+    setCloudCfg(cfg);
+    renderCloudStatus();
+    showToast('Backed up to cloud');
+  }catch(e){
+    console.error('cloud backup failed', e);
+    await askForConfirm({title:'Cloud backup failed', message: e.message || String(e), confirmLabel:'OK', infoOnly:true});
+  }
+}
+
+async function restoreFromCloud(){
+  let cfg = getCloudCfg();
+  if(!cfg || !cfg.url || !cfg.anonKey){ showToast('Set up Cloud Backup Settings first'); return; }
+  let pin = cfg.pin;
+  if(!pin){
+    pin = await askForText({ title:'Enter your backup passphrase', masked:true, confirmLabel:'Restore' });
+    if(!pin) return;
+  }
+  showToast('Checking cloud…');
+  try{
+    const data = await callSupabaseRPC(cfg, 'get_backup', {pin});
+    if(!data){ showToast('No backup found for that passphrase'); return; }
+    if(!(await askForConfirm({title:'Restore from cloud?', message:'Replace all current data on this device with the cloud backup?', confirmLabel:'Replace', danger:true}))) return;
+    STATE = data;
+    saveState();
+    cfg.pin = pin; setCloudCfg(cfg);
+    renderAll();
+    renderCloudStatus();
+    hideOverlay('history-overlay');
+    showToast('Restored from cloud');
+  }catch(e){
+    console.error('cloud restore failed', e);
+    await askForConfirm({title:'Cloud restore failed', message: e.message || String(e), confirmLabel:'OK', infoOnly:true});
+  }
+}
+
+function renderCloudStatus(){
+  const note = document.getElementById('cloud-status-note');
+  if(!note) return;
+  const cfg = getCloudCfg();
+  if(!cfg || !cfg.url || !cfg.anonKey){
+    note.textContent = 'Not set up yet — protects your data if this phone is lost, wiped, or replaced.';
+  } else if(!cfg.lastBackup){
+    note.textContent = 'Configured — tap "Backup to Cloud" to create your first backup.';
+  } else {
+    const d = new Date(cfg.lastBackup);
+    note.textContent = `Last backed up ${d.toLocaleDateString()} ${d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}.`;
+  }
+}
+
+/* ---------------- local backup: export / import ---------------- */
+async function exportBackup(){
+  const filename = `iron-ledger-backup-${new Date().toISOString().slice(0,10)}.json`;
+  const data = JSON.stringify(STATE, null, 2);
+
+  if(typeof window.claude !== 'undefined' && window.claude.use){
+    try{
+      const downloads = await window.claude.use('downloads');
+      if(downloads){
+        const res = await downloads.save({filename, data});
+        showToast(res.status === 'saved' ? 'Backup saved' : 'Backup sent');
+        return;
+      }
+    }catch(e){
+      if(e && e.code === 'declined') return;
+      // fall through to the plain-browser method below
+    }
+  }
+  try{
+    const blob = new Blob([data], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    showToast('Backup downloaded');
+  }catch(e2){
+    console.error('export failed', e2);
+    showToast('Export failed — try again');
+  }
+}
+
+function importBackup(file){
+  const reader = new FileReader();
+  reader.onload = async () => {
+    try{
+      const parsed = JSON.parse(reader.result);
+      if(!parsed || !Array.isArray(parsed.exercises)) throw new Error('unexpected file shape');
+      const ok = await askForConfirm({title:'Restore from file?', message:'Replace all current data on this device with this backup? This cannot be undone.', confirmLabel:'Replace', danger:true});
+      if(!ok) return;
+      STATE = parsed;
+      saveState();
+      renderAll();
+      hideOverlay('history-overlay');
+      showToast('Backup restored');
+    }catch(e){
+      console.error('import failed', e);
+      showToast('Could not read that backup file');
+    }
+  };
+  reader.readAsText(file);
+}
+
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.remove('hidden');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(()=>t.classList.add('hidden'), 1800);
+}
+
+/* ---------------- derived helpers ---------------- */
+function targetWeightFor(ex, week){
+  if(!ex.progression) return ex.accessoryWeight;
+  return roundPlate(ex.baseline1RM * WEEK_PCT[week] / 100);
+}
+function logKey(block, week, exId){ return `${block}_${week}_${exId}`; }
+function getLogs(ex){
+  const key = logKey(STATE.block, STATE.week, ex.id);
+  let arr = STATE.logs[key];
+  if(!arr) arr = [];
+  arr = arr.slice(0, ex.sets);
+  while(arr.length < ex.sets) arr.push({weight:'', reps:'', logged:false});
+  STATE.logs[key] = arr;
+  return arr;
+}
+function isAMRAPRow(ex, setIdx){
+  return ex.progression && STATE.week===4 && setIdx === ex.sets-1;
+}
+
+/* ---------------- rendering ---------------- */
+function renderAll(){
+  document.getElementById('block-lbl').textContent = `Block ${STATE.block}`;
+  document.getElementById('week-lbl').textContent = STATE.week===5 ? 'Week 5 · Recovery' : `Week ${STATE.week}`;
+  renderWeekPills();
+  renderSplitTabs();
+  renderContent();
+}
+
+function renderWeekPills(){
+  const wrap = document.getElementById('week-pills');
+  wrap.innerHTML = '';
+  for(let w=1; w<=5; w++){
+    const p = document.createElement('button');
+    p.className = 'pill' + (w===STATE.week?' active':'') + (w===5?' recovery':'');
+    p.textContent = w===5 ? 'W5 💤' : 'W'+w;
+    p.addEventListener('click', ()=>{ STATE.week=w; saveState(); renderAll(); });
+    wrap.appendChild(p);
+  }
+}
+
+function renderSplitTabs(){
+  const wrap = document.getElementById('split-tabs');
+  wrap.innerHTML = '';
+  const tabs = [['push','Push'],['pull','Pull'],['legs','Legs'],['cardio','Cardio']];
+  tabs.forEach(([key,label])=>{
+    const b = document.createElement('button');
+    b.className = 'split-tab' + (STATE.split===key ? ' active':'');
+    b.textContent = label;
+    b.addEventListener('click', ()=>{ STATE.split=key; saveState(); renderContent(); syncFab(); });
+    wrap.appendChild(b);
+  });
+  syncFab();
+}
+
+function syncFab(){
+  document.getElementById('fab').textContent = '+';
+}
+
+function renderContent(){
+  const el = document.getElementById('content');
+  el.innerHTML = '';
+
+  if(STATE.week===5){
+    const banner = document.createElement('div');
+    banner.className = 'rollover-banner';
+    banner.innerHTML = `<p><b>Recovery Week</b> — 50% of Week 4 load. When you're done, lock in this block's results.</p>
+      <button id="rollover-open-btn">Complete Cycle & Advance to Block ${STATE.block+1}</button>`;
+    el.appendChild(banner);
+    banner.querySelector('#rollover-open-btn').addEventListener('click', openRolloverModal);
+  }
+
+  if(STATE.split==='cardio'){ renderCardio(el); return; }
+
+  const list = STATE.exercises.filter(e=>e.split===STATE.split);
+  if(list.length===0){
+    const es = document.createElement('div');
+    es.className = 'empty-state';
+    es.innerHTML = `No exercises on <b>${STATE.split}</b> day yet. Tap the + button to add one.`;
+    el.appendChild(es);
+    return;
+  }
+  list.forEach(ex => el.appendChild(renderExerciseCard(ex)));
+}
+
+function renderExerciseCard(ex){
+  const card = document.createElement('div');
+  card.className = 'ex-card';
+
+  const head = document.createElement('div');
+  head.className = 'ex-head';
+  head.innerHTML = `
+    <div class="ex-name-row">
+      <input class="ex-name" value="${escapeAttr(ex.name)}" size="${Math.max(6,ex.name.length)}">
+      <span class="badge ${ex.progression?'progression':'accessory'}">${ex.progression?'Progression':'Accessory'}</span>
+    </div>
+    <div class="ex-actions">
+      <button class="mini-btn" title="Edit">✎</button>
+      <button class="mini-btn danger" title="Delete exercise">✕</button>
+    </div>`;
+  const nameInput = head.querySelector('.ex-name');
+  nameInput.addEventListener('change', ()=>{ ex.name = nameInput.value.trim() || ex.name; saveState(); });
+  nameInput.addEventListener('input', ()=>{ nameInput.size = Math.max(6, nameInput.value.length); });
+  head.querySelector('.mini-btn[title="Edit"]').addEventListener('click', ()=>openExerciseSheet(ex));
+  head.querySelector('.mini-btn.danger').addEventListener('click', async ()=>{
+    const ok = await askForConfirm({title:'Delete exercise?', message:`Delete ${ex.name}? This removes it from every week.`, confirmLabel:'Delete', danger:true});
+    if(ok){
+      STATE.exercises = STATE.exercises.filter(e=>e.id!==ex.id);
+      saveState(); renderContent();
+    }
+  });
+  card.appendChild(head);
+
+  const targetLine = document.createElement('div');
+  targetLine.className = 'target-line';
+  if(ex.progression){
+    targetLine.innerHTML = `Target: <b>${fmt(targetWeightFor(ex, STATE.week))} kg × ${escapeAttr(String(ex.repsTarget))}</b> &nbsp;·&nbsp; Baseline 1RM: <b>${fmt(ex.baseline1RM)} kg</b>`;
+  } else {
+    targetLine.innerHTML = `Target: <b>${ex.accessoryWeight>0? fmt(ex.accessoryWeight)+' kg':'Bodyweight'} × ${escapeAttr(ex.accessoryReps)}</b>`;
+  }
+  card.appendChild(targetLine);
+
+  const logs = getLogs(ex);
+  logs.forEach((entry, i)=> card.appendChild(renderSetRow(ex, entry, i)));
+
+  const addSet = document.createElement('button');
+  addSet.className = 'add-set-btn';
+  addSet.textContent = '+ Add set';
+  addSet.addEventListener('click', ()=>{
+    if(ex.sets < MAX_SETS){ ex.sets++; saveState(); renderContent(); }
+  });
+  card.appendChild(addSet);
+
+  return card;
+}
+
+function renderSetRow(ex, entry, idx){
+  const amrap = isAMRAPRow(ex, idx);
+  const row = document.createElement('div');
+  row.className = 'set-row' + (entry.logged?' logged':'') + (amrap?' amrap':'');
+
+  const targetW = targetWeightFor(ex, STATE.week);
+  const targetR = ex.progression ? ex.repsTarget : ex.accessoryReps;
+  const defaultWeight = entry.weight!=='' ? entry.weight : targetW;
+  const defaultReps = entry.reps!=='' ? entry.reps : (ex.progression ? targetR : '');
+
+  const top = document.createElement('div');
+  top.className = 'set-row-top';
+  top.innerHTML = `
+    <span class="set-idx">Set ${idx+1}</span>
+    ${amrap ? '<span class="amrap-badge">AMRAP 🔥</span>' : `<span class="set-row-target">Target ${fmt(targetW)} kg${ex.progression? ' × '+escapeAttr(String(targetR)):''}</span>`}
+  `;
+  row.appendChild(top);
+
+  const fields = document.createElement('div');
+  fields.className = 'set-fields';
+  fields.innerHTML = `
+    <div class="set-fields-top">
+      <div>
+        <div class="stepper">
+          <button class="w-minus" type="button">−</button>
+          <input type="number" class="w-input" inputmode="decimal" value="${defaultWeight}">
+          <button class="w-plus" type="button">+</button>
+        </div>
+        <span class="stepper-label">kg</span>
+      </div>
+      <div>
+        <div class="stepper">
+          <button class="r-minus" type="button">−</button>
+          <input type="number" class="r-input" inputmode="numeric" value="${defaultReps}">
+          <button class="r-plus" type="button">+</button>
+        </div>
+        <span class="stepper-label">reps</span>
+      </div>
+    </div>
+    <div class="set-fields-bottom">
+      <button class="log-btn">${entry.logged?'Logged ✓':'Log Set'}</button>
+      <button class="set-trash" title="Remove set">🗑</button>
+    </div>
+  `;
+  row.appendChild(fields);
+
+  let projection = null;
+  if(amrap){
+    projection = document.createElement('div');
+    projection.className = 'amrap-projection';
+    row.appendChild(projection);
+  }
+
+  const wInput = fields.querySelector('.w-input');
+  const rInput = fields.querySelector('.r-input');
+
+  function updateProjection(){
+    if(!amrap) return;
+    const w = parseFloat(wInput.value), r = parseInt(rInput.value,10);
+    if(isFinite(w) && isFinite(r) && w>0 && r>0){
+      const newRM = composite1RM(w,r);
+      const delta = newRM - ex.baseline1RM;
+      projection.textContent = `Projected 1RM: ${fmt(newRM)} kg (${delta>=0?'+':''}${fmt(delta)} kg)`;
+      projection.classList.add('show');
+    } else {
+      projection.classList.remove('show');
+    }
+  }
+  updateProjection();
+
+  fields.querySelector('.w-minus').addEventListener('click', ()=>{ wInput.value = Math.max(0, (parseFloat(wInput.value)||0) - ROUND_STEP); updateProjection(); });
+  fields.querySelector('.w-plus').addEventListener('click', ()=>{ wInput.value = (parseFloat(wInput.value)||0) + ROUND_STEP; updateProjection(); });
+  fields.querySelector('.r-minus').addEventListener('click', ()=>{ rInput.value = Math.max(0, (parseInt(rInput.value,10)||0) - 1); updateProjection(); });
+  fields.querySelector('.r-plus').addEventListener('click', ()=>{ rInput.value = (parseInt(rInput.value,10)||0) + 1; updateProjection(); });
+  wInput.addEventListener('input', updateProjection);
+  rInput.addEventListener('input', updateProjection);
+
+  fields.querySelector('.log-btn').addEventListener('click', ()=>{
+    entry.weight = wInput.value; entry.reps = rInput.value; entry.logged = true;
+    saveState(); renderContent();
+    showToast(`Logged ${wInput.value || 0} kg × ${rInput.value || 0}`);
+  });
+  fields.querySelector('.set-trash').addEventListener('click', ()=>{
+    if(ex.sets<=1){ showToast('Keep at least 1 set'); return; }
+    ex.sets--;
+    saveState(); renderContent();
+  });
+
+  return row;
+}
+
+function escapeAttr(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+/* ---------------- cardio ---------------- */
+function renderCardio(el){
+  const list = STATE.cardio;
+  if(list.length===0){
+    const es = document.createElement('div');
+    es.className = 'empty-state';
+    es.innerHTML = `No cardio logged yet. Tap + to add a run, ride, or row.`;
+    el.appendChild(es);
+    return;
+  }
+  list.forEach((c, i)=>{
+    const row = document.createElement('div');
+    row.className = 'cardio-entry';
+    row.innerHTML = `
+      <div>
+        <div class="ce-main">${escapeAttr(c.activity)} · ${c.date}</div>
+        <div class="ce-sub">${c.distance||0} km · ${c.duration||0} min${c.hr? ' · '+c.hr+' bpm':''}</div>
+      </div>
+      <button class="mini-btn danger" title="Delete">✕</button>
+    `;
+    row.querySelector('.mini-btn').addEventListener('click', ()=>{
+      STATE.cardio = STATE.cardio.filter((_,idx)=>idx!==i);
+      saveState(); renderContent();
+    });
+    el.appendChild(row);
+  });
+}
+
+/* ---------------- add/edit exercise sheet ---------------- */
+let editingExId = null;
+function openExerciseSheet(ex){
+  editingExId = ex ? ex.id : null;
+  document.getElementById('ex-sheet-title').textContent = ex ? 'Edit Exercise' : 'Add Exercise';
+  document.getElementById('f-name').value = ex ? ex.name : '';
+  document.getElementById('f-split').value = ex ? ex.split : STATE.split==='cardio' ? 'push' : STATE.split;
+  document.getElementById('f-sets').value = ex ? ex.sets : 4;
+  document.getElementById('f-baseline').value = ex ? ex.baseline1RM : '';
+  document.getElementById('f-reps-target').value = ex ? ex.repsTarget : 5;
+  document.getElementById('f-acc-weight').value = ex ? ex.accessoryWeight : '';
+  document.getElementById('f-acc-reps').value = ex ? ex.accessoryReps : '8-12';
+  setProgressionToggle(ex ? ex.progression : true);
+  showOverlay('ex-sheet-overlay');
+}
+function closeExerciseSheet(){ hideOverlay('ex-sheet-overlay'); editingExId=null; }
+
+function setProgressionToggle(on){
+  const t = document.getElementById('f-progression-toggle');
+  t.classList.toggle('on', on);
+  t.dataset.on = on ? '1':'0';
+  document.getElementById('progression-fields').style.display = on ? 'block':'none';
+  document.getElementById('accessory-fields').style.display = on ? 'none':'block';
+}
+
+/* ---------------- rollover ---------------- */
+function openRolloverModal(){
+  const nextBlock = STATE.block+1;
+  document.getElementById('rollover-title').textContent = `Advance to Block ${nextBlock}`;
+  const listEl = document.getElementById('rollover-list');
+  listEl.innerHTML = '';
+  const progressionExs = STATE.exercises.filter(e=>e.progression);
+  const pendingChanges = [];
+  progressionExs.forEach(ex=>{
+    const key = logKey(STATE.block, 4, ex.id);
+    const arr = STATE.logs[key];
+    const amrapEntry = arr ? arr[ex.sets-1] : null;
+    let newRM = ex.baseline1RM, changed = false;
+    if(amrapEntry && amrapEntry.logged){
+      const w = parseFloat(amrapEntry.weight), r = parseInt(amrapEntry.reps,10);
+      if(isFinite(w) && isFinite(r) && w>0 && r>0){ newRM = composite1RM(w,r); changed = true; }
+    }
+    pendingChanges.push({ ex, oldRM: ex.baseline1RM, newRM: changed ? newRM : ex.baseline1RM, changed });
+    const row = document.createElement('div');
+    row.className = 'rollover-row';
+    const delta = pendingChanges[pendingChanges.length-1].newRM - ex.baseline1RM;
+    row.innerHTML = `<span>${escapeAttr(ex.name)}</span><span>${fmt(ex.baseline1RM)} → <b>${fmt(pendingChanges[pendingChanges.length-1].newRM)}</b> kg <span class="delta ${changed?'up':'flat'}">${changed?`(${delta>=0?'+':''}${fmt(delta)})`:'(no AMRAP logged)'}</span></span>`;
+    listEl.appendChild(row);
+  });
+  if(progressionExs.length===0){
+    listEl.innerHTML = `<div class="empty-state" style="padding:20px;">No progression exercises set up yet.</div>`;
+  }
+  showOverlay('rollover-overlay');
+  document.getElementById('rollover-confirm-btn').onclick = ()=> confirmRollover(pendingChanges);
+}
+function closeRolloverModal(){ hideOverlay('rollover-overlay'); }
+
+function confirmRollover(pendingChanges){
+  const changesForHistory = pendingChanges.map(pc=>({ name: pc.ex.name, old: pc.ex.baseline1RM, new: pc.newRM }));
+  pendingChanges.forEach(pc=>{ pc.ex.baseline1RM = pc.newRM; });
+  STATE.history.unshift({ fromBlock: STATE.block, toBlock: STATE.block+1, date: new Date().toISOString().slice(0,10), changes: changesForHistory });
+  STATE.block += 1;
+  STATE.week = 1;
+  saveState();
+  closeRolloverModal();
+  renderAll();
+  showToast(`Block ${STATE.block} begins`);
+}
+
+/* ---------------- history modal ---------------- */
+function openHistoryModal(){
+  const el = document.getElementById('history-list');
+  el.innerHTML = '';
+  if(STATE.history.length===0){
+    el.innerHTML = `<div class="empty-state" style="padding:24px 4px;">No completed blocks yet. Finish Week 5 to see your first rollover here.</div>`;
+  } else {
+    STATE.history.forEach(h=>{
+      const div = document.createElement('div');
+      div.className = 'history-entry';
+      div.innerHTML = `<h3>Block ${h.fromBlock} → Block ${h.toBlock}</h3><div class="h-date">${h.date}</div>`;
+      h.changes.forEach(c=>{
+        const line = document.createElement('div');
+        line.className = 'h-change';
+        line.innerHTML = `<span>${escapeAttr(c.name)}</span><span>${fmt(c.old)} → ${fmt(c.new)} kg</span>`;
+        div.appendChild(line);
+      });
+      el.appendChild(div);
+    });
+  }
+  showOverlay('history-overlay');
+  renderCloudStatus();
+}
+
+/* ---------------- init & wiring ---------------- */
+document.addEventListener('DOMContentLoaded', ()=>{
+  loadState();
+  renderAll();
+  renderCloudStatus();
+
+  document.getElementById('history-btn').addEventListener('click', openHistoryModal);
+  document.getElementById('advance-week-btn').addEventListener('click', ()=>{
+    if(STATE.week < 5){
+      STATE.week += 1;
+      saveState();
+      renderAll();
+      showToast(`Week ${STATE.week}`);
+    } else {
+      openRolloverModal();
+    }
+  });
+  document.getElementById('history-close-btn').addEventListener('click', ()=>hideOverlay('history-overlay'));
+  document.getElementById('export-btn').addEventListener('click', exportBackup);
+  document.getElementById('import-btn').addEventListener('click', ()=>document.getElementById('import-file').click());
+  document.getElementById('import-file').addEventListener('change', (e)=>{
+    const f = e.target.files[0];
+    if(f) importBackup(f);
+    e.target.value = '';
+  });
+  document.getElementById('cloud-setup-btn').addEventListener('click', openCloudSetup);
+  document.getElementById('cloud-backup-btn').addEventListener('click', backupToCloud);
+  document.getElementById('cloud-restore-btn').addEventListener('click', restoreFromCloud);
+
+  document.getElementById('fab').addEventListener('click', ()=>{
+    if(STATE.split==='cardio'){
+      document.getElementById('c-date').value = new Date().toISOString().slice(0,10);
+      document.getElementById('c-activity').value = 'Run';
+      document.getElementById('c-distance').value = '';
+      document.getElementById('c-duration').value = '';
+      document.getElementById('c-hr').value = '';
+      showOverlay('cardio-sheet-overlay');
+    } else {
+      openExerciseSheet(null);
+    }
+  });
+
+  wireOverlayDismiss('ex-sheet-overlay', closeExerciseSheet);
+  wireOverlayDismiss('cardio-sheet-overlay', ()=>hideOverlay('cardio-sheet-overlay'));
+  wireOverlayDismiss('rollover-overlay', closeRolloverModal);
+  wireOverlayDismiss('history-overlay', ()=>hideOverlay('history-overlay'));
+  wireOverlayDismiss('confirm-overlay', ()=>document.getElementById('confirm-cancel').click());
+  wireOverlayDismiss('text-input-overlay', ()=>document.getElementById('text-input-cancel').click());
+  wireSheetSwipeDown('ex-sheet', closeExerciseSheet);
+  wireSheetSwipeDown('cardio-sheet', ()=>hideOverlay('cardio-sheet-overlay'));
+  wireSheetSwipeDown('text-input-sheet', ()=>document.getElementById('text-input-cancel').click());
+
+  document.getElementById('f-progression-toggle').addEventListener('click', (e)=>{
+    setProgressionToggle(e.currentTarget.dataset.on !== '1');
+  });
+  document.getElementById('ex-cancel-btn').addEventListener('click', closeExerciseSheet);
+  document.getElementById('ex-save-btn').addEventListener('click', ()=>{
+    const name = document.getElementById('f-name').value.trim();
+    if(!name){ showToast('Name required'); return; }
+    const split = document.getElementById('f-split').value;
+    const progression = document.getElementById('f-progression-toggle').dataset.on === '1';
+    const sets = Math.max(1, Math.min(MAX_SETS, parseInt(document.getElementById('f-sets').value,10) || 4));
+    const baseline1RM = parseFloat(document.getElementById('f-baseline').value) || 0;
+    const repsTarget = parseInt(document.getElementById('f-reps-target').value,10) || 5;
+    const accessoryWeight = parseFloat(document.getElementById('f-acc-weight').value) || 0;
+    const accessoryReps = document.getElementById('f-acc-reps').value.trim() || '8-12';
+
+    if(editingExId){
+      const ex = STATE.exercises.find(e=>e.id===editingExId);
+      Object.assign(ex, { name, split, progression, sets, baseline1RM, repsTarget, accessoryWeight, accessoryReps });
+    } else {
+      STATE.exercises.push({ id: uid(), name, split, progression, sets, baseline1RM, repsTarget, accessoryWeight, accessoryReps });
+      STATE.split = split;
+    }
+    saveState();
+    closeExerciseSheet();
+    renderAll();
+    showToast('Saved');
+  });
+
+  document.getElementById('cardio-cancel-btn').addEventListener('click', ()=>hideOverlay('cardio-sheet-overlay'));
+  document.getElementById('cardio-save-btn').addEventListener('click', ()=>{
+    const entry = {
+      date: document.getElementById('c-date').value || new Date().toISOString().slice(0,10),
+      activity: document.getElementById('c-activity').value,
+      distance: parseFloat(document.getElementById('c-distance').value) || 0,
+      duration: parseFloat(document.getElementById('c-duration').value) || 0,
+      hr: parseInt(document.getElementById('c-hr').value,10) || 0
+    };
+    STATE.cardio.unshift(entry);
+    saveState();
+    hideOverlay('cardio-sheet-overlay');
+    renderContent();
+    showToast('Cardio logged');
+  });
+
+  document.getElementById('rollover-cancel-btn').addEventListener('click', closeRolloverModal);
+});
+</script>
+</body>
+</html>
