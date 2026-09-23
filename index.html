@@ -161,6 +161,7 @@ input, select, textarea{ font-size:16px !important; }
   padding:2px 8px; border-radius:6px; letter-spacing:.04em;
 }
 .set-row-target{ font-size:11px; color:var(--muted); }
+.set-last-line{ font-size:11px; color:var(--amber); margin:-2px 0 8px; font-weight:600; }
 .set-fields{ display:flex; flex-direction:column; gap:8px; }
 .set-fields-top{ display:flex; align-items:flex-start; gap:8px; }
 .set-fields-top > div{ flex:1; min-width:0; }
@@ -266,6 +267,40 @@ input, select, textarea{ font-size:16px !important; }
 
 .history-entry{ border-bottom:1px solid var(--border); padding:12px 0; }
 .history-entry:last-child{ border-bottom:none; }
+
+.section-divider{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:16px 0 8px; }
+.trend-card{ background:var(--surface-2); border:1px solid var(--border); border-radius:12px; padding:10px 12px; margin-bottom:8px; }
+.trend-name{ font-size:13px; font-weight:700; margin-bottom:4px; }
+.trend-chart{ width:100%; height:44px; display:block; }
+.trend-row{ display:flex; justify-content:space-between; font-size:12px; color:var(--muted); margin-top:4px; }
+.trend-row .up{ color:var(--emerald); font-weight:700; }
+.trend-row .flat{ color:var(--muted); }
+
+.calendar-header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+.calendar-weekdays{ display:grid; grid-template-columns:repeat(7,1fr); gap:4px; margin-bottom:4px; }
+.calendar-weekdays span{ text-align:center; font-size:10px; font-weight:700; color:var(--muted); text-transform:uppercase; }
+.calendar-grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
+.cal-day{
+  aspect-ratio:1; border-radius:9px; border:1px solid transparent; background:transparent;
+  color:var(--text); font-size:13px; font-weight:600; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:3px; position:relative;
+}
+.cal-day.other-month{ color:var(--muted); opacity:0.35; }
+.cal-day.has-activity{ border-color:var(--border); background:var(--surface-2); cursor:pointer; }
+.cal-day.selected{ border-color:var(--emerald); background:var(--emerald-dim); }
+.cal-day.today{ font-weight:800; text-decoration:underline; text-underline-offset:3px; }
+.cal-dots{ display:flex; gap:2px; }
+.cal-dot{ width:5px; height:5px; border-radius:50%; }
+.cal-dot.lift{ background:var(--emerald); }
+.cal-dot.cardio{ background:var(--amber); }
+
+#calendar-day-detail{ margin-top:14px; }
+.cal-detail-title{ font-size:12px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; margin-bottom:8px; }
+.cal-session{ background:var(--surface-2); border:1px solid var(--border); border-radius:12px; padding:10px 12px; margin-bottom:8px; }
+.cal-session-head{ font-size:12px; font-weight:800; color:var(--emerald); margin-bottom:6px; text-transform:uppercase; letter-spacing:.03em; }
+.cal-session-head.cardio-head{ color:var(--amber); }
+.cal-ex-line{ font-size:12px; color:var(--text); display:flex; justify-content:space-between; padding:3px 0; }
+.cal-ex-line span:last-child{ color:var(--muted); }
 .history-head{ display:flex; justify-content:space-between; align-items:center; gap:8px; cursor:pointer; padding:4px 0; min-height:44px; }
 .history-chevron{ color:var(--muted); font-size:13px; flex:0 0 auto; }
 .history-entry h3{ margin:0 0 4px; font-size:13px; font-weight:800; }
@@ -295,6 +330,7 @@ input, select, textarea{ font-size:16px !important; }
       </div>
       <div class="icon-row">
         <button class="icon-btn advance-btn" id="advance-week-btn" title="Advance to next week">Advance Week</button>
+        <button class="icon-btn" id="calendar-btn" title="Calendar">📅</button>
         <button class="icon-btn" id="history-btn" title="Block history">▤</button>
       </div>
     </div>
@@ -404,6 +440,9 @@ input, select, textarea{ font-size:16px !important; }
 <div class="overlay hidden" id="history-overlay">
   <div class="modal-card">
     <h2>Block History</h2>
+
+    <div id="onerm-trends"></div>
+    <div class="section-divider" id="block-list-divider" style="display:none;">Block-by-Block</div>
     <div id="history-list" style="max-height:60vh;overflow-y:auto;overscroll-behavior:contain;"></div>
 
     <div class="backup-section">
@@ -428,6 +467,23 @@ input, select, textarea{ font-size:16px !important; }
 
     <div class="modal-actions">
       <button class="btn primary" id="history-close-btn" style="flex:1;">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Calendar modal -->
+<div class="overlay hidden" id="calendar-overlay">
+  <div class="modal-card" id="calendar-card" style="max-width:420px;">
+    <div class="calendar-header">
+      <button class="mini-btn" id="cal-prev-btn" title="Previous month">‹</button>
+      <h2 id="cal-month-label" style="margin:0;">Month YYYY</h2>
+      <button class="mini-btn" id="cal-next-btn" title="Next month">›</button>
+    </div>
+    <div class="calendar-weekdays" id="calendar-weekdays"></div>
+    <div class="calendar-grid" id="calendar-grid"></div>
+    <div id="calendar-day-detail"></div>
+    <div class="modal-actions">
+      <button class="btn primary" id="calendar-close-btn" style="flex:1;">Close</button>
     </div>
   </div>
 </div>
@@ -475,6 +531,11 @@ const MAX_SETS = 8;
 function uid(){ return Math.random().toString(36).slice(2,10); }
 function roundPlate(w){ return Math.round(w/ROUND_STEP)*ROUND_STEP; }
 function fmt(n){ if(n===''||n===null||n===undefined||isNaN(n)) return '—'; const r=Math.round(n*10)/10; return String(r); }
+function todayISO(){
+  const d = new Date();
+  const tz = d.getTimezoneOffset();
+  return new Date(d.getTime() - tz*60000).toISOString().slice(0,10);
+}
 
 function epley(w,r){ return w*(1+r/30); }
 function brzycki(w,r){ return r>=37 ? w : w*36/(37-r); }
@@ -530,7 +591,7 @@ function saveState(){
 
 /* ---------------- overlay helpers (scroll lock + dismiss) ---------------- */
 function anyOverlayOpen(){
-  return ['ex-sheet-overlay','cardio-sheet-overlay','rollover-overlay','history-overlay','confirm-overlay','text-input-overlay']
+  return ['ex-sheet-overlay','cardio-sheet-overlay','rollover-overlay','history-overlay','confirm-overlay','text-input-overlay','calendar-overlay']
     .some(id => !document.getElementById(id).classList.contains('hidden'));
 }
 function showOverlay(id){
@@ -955,6 +1016,22 @@ function renderExerciseCard(ex){
   return card;
 }
 
+function getLastTimeForExercise(ex, setIdx){
+  let best = null;
+  Object.keys(STATE.logs).forEach(key=>{
+    const [block, week, exId] = key.split('_');
+    if(exId !== ex.id) return;
+    if(+block === STATE.block && +week === STATE.week) return; // skip the slot we're currently filling
+    const entry = STATE.logs[key][setIdx];
+    if(entry && entry.logged && entry.loggedAt){
+      if(!best || entry.loggedAt > best.loggedAt){
+        best = { weight: entry.weight, reps: entry.reps, loggedAt: entry.loggedAt };
+      }
+    }
+  });
+  return best;
+}
+
 function renderSetRow(ex, entry, idx){
   const amrap = isAMRAPRow(ex, idx);
   const row = document.createElement('div');
@@ -962,8 +1039,9 @@ function renderSetRow(ex, entry, idx){
 
   const targetW = targetWeightFor(ex, STATE.week);
   const targetR = ex.progression ? ex.repsTarget : ex.accessoryReps;
-  const defaultWeight = entry.weight!=='' ? entry.weight : targetW;
-  const defaultReps = entry.reps!=='' ? entry.reps : (ex.progression ? targetR : '');
+  const lastTime = entry.weight==='' ? getLastTimeForExercise(ex, idx) : null;
+  const defaultWeight = entry.weight!=='' ? entry.weight : (lastTime ? lastTime.weight : targetW);
+  const defaultReps = entry.reps!=='' ? entry.reps : (lastTime ? lastTime.reps : (ex.progression ? targetR : ''));
 
   const top = document.createElement('div');
   top.className = 'set-row-top';
@@ -972,6 +1050,13 @@ function renderSetRow(ex, entry, idx){
     ${amrap ? '<span class="amrap-badge">AMRAP 🔥</span>' : `<span class="set-row-target">Target ${fmt(targetW)} kg${ex.progression? ' × '+escapeAttr(String(targetR)):''}</span>`}
   `;
   row.appendChild(top);
+
+  if(lastTime){
+    const lastLine = document.createElement('div');
+    lastLine.className = 'set-last-line';
+    lastLine.textContent = `Last time: ${fmt(lastTime.weight)} kg × ${lastTime.reps}`;
+    row.appendChild(lastLine);
+  }
 
   const fields = document.createElement('div');
   fields.className = 'set-fields';
@@ -1034,6 +1119,7 @@ function renderSetRow(ex, entry, idx){
 
   fields.querySelector('.log-btn').addEventListener('click', ()=>{
     entry.weight = wInput.value; entry.reps = rInput.value; entry.logged = true;
+    entry.loggedAt = todayISO();
     saveState(); renderContent();
     showToast(`Logged ${wInput.value || 0} kg × ${rInput.value || 0}`);
   });
@@ -1145,6 +1231,77 @@ function confirmRollover(pendingChanges){
   showToast(`Block ${STATE.block} begins`);
 }
 
+function get1RMSeriesForExercise(name){
+  const key = name.trim().toLowerCase();
+  const chronological = [...STATE.history].reverse(); // oldest transition first
+  const points = [];
+  let seenFirst = false;
+  chronological.forEach(h=>{
+    const change = h.changes.find(c=>c.name.trim().toLowerCase()===key);
+    if(change){
+      if(!seenFirst){ points.push({ block: h.fromBlock, value: change.old }); seenFirst = true; }
+      points.push({ block: h.toBlock, value: change.new });
+    }
+  });
+  return points;
+}
+
+function sparklineSVG(points){
+  const w = 280, h = 44, pad = 6;
+  const vals = points.map(p=>p.value);
+  const min = Math.min(...vals), max = Math.max(...vals);
+  const range = (max - min) || 1;
+  const stepX = points.length > 1 ? (w - 2*pad) / (points.length - 1) : 0;
+  const coords = points.map((p,i)=>{
+    const x = pad + i*stepX;
+    const y = h - pad - ((p.value - min) / range) * (h - 2*pad);
+    return `${x},${y}`;
+  });
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+  svg.setAttribute('class', 'trend-chart');
+  svg.innerHTML = `
+    <polyline points="${coords.join(' ')}" fill="none" stroke="var(--emerald)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    ${coords.map(c=>{ const [x,y]=c.split(','); return `<circle cx="${x}" cy="${y}" r="3" fill="var(--emerald)"/>`; }).join('')}
+  `;
+  return svg;
+}
+
+function renderOneRMTrends(){
+  const el = document.getElementById('onerm-trends');
+  const divider = document.getElementById('block-list-divider');
+  el.innerHTML = '';
+  const progressionExs = STATE.exercises.filter(e=>e.progression);
+  let anyChart = false;
+
+  progressionExs.forEach(ex=>{
+    const points = get1RMSeriesForExercise(ex.name);
+    if(points.length===0 || points[points.length-1].value !== ex.baseline1RM){
+      points.push({ block: STATE.block, value: ex.baseline1RM });
+    }
+    if(points.length < 2) return; // not enough history yet for this lift
+    anyChart = true;
+    const first = points[0].value, last = points[points.length-1].value;
+    const delta = Math.round((last-first)*10)/10;
+    const card = document.createElement('div');
+    card.className = 'trend-card';
+    card.innerHTML = `<div class="trend-name">${escapeAttr(ex.name)}</div>`;
+    card.appendChild(sparklineSVG(points));
+    const row = document.createElement('div');
+    row.className = 'trend-row';
+    row.innerHTML = `<span>${fmt(first)} → <b>${fmt(last)}</b> kg</span><span class="${delta>=0?'up':'flat'}">${delta>=0?'+':''}${fmt(delta)} kg</span>`;
+    card.appendChild(row);
+    el.appendChild(card);
+  });
+
+  if(!anyChart){
+    el.innerHTML = `<div class="empty-state" style="padding:16px 4px;">Complete at least one block to start seeing 1RM trends here.</div>`;
+    divider.style.display = 'none';
+  } else {
+    divider.style.display = STATE.history.length ? 'block' : 'none';
+  }
+}
+
 /* ---------------- history modal ---------------- */
 let expandedHistoryIds = new Set(); // in-memory only — every entry starts collapsed each time the modal opens
 
@@ -1190,9 +1347,139 @@ function renderHistoryList(){
 
 function openHistoryModal(){
   expandedHistoryIds = new Set();
+  renderOneRMTrends();
   renderHistoryList();
   showOverlay('history-overlay');
   renderCloudStatus();
+}
+
+/* ---------------- calendar modal ---------------- */
+let calendarViewDate = null; // Date set to the 1st of the viewed month
+let calendarSelectedDate = null; // 'YYYY-MM-DD' or null
+
+function getDayActivity(dateStr){
+  const sessions = {}; // key: block_week_split -> {block, week, split, exercises: {exId: {name, sets:[]}}}
+  Object.keys(STATE.logs).forEach(key=>{
+    const [block, week, exId] = key.split('_');
+    const ex = STATE.exercises.find(e=>e.id===exId);
+    if(!ex) return;
+    STATE.logs[key].forEach(entry=>{
+      if(entry.logged && entry.loggedAt === dateStr){
+        const sKey = `${block}_${week}_${ex.split}`;
+        if(!sessions[sKey]) sessions[sKey] = { block:+block, week:+week, split:ex.split, exercises:{} };
+        if(!sessions[sKey].exercises[ex.id]) sessions[sKey].exercises[ex.id] = { name: ex.name, sets: [] };
+        sessions[sKey].exercises[ex.id].sets.push({ weight: entry.weight, reps: entry.reps });
+      }
+    });
+  });
+  const cardio = STATE.cardio.filter(c=>c.date===dateStr);
+  return { sessions: Object.values(sessions), cardio };
+}
+
+function getMonthActivityMap(year, month){
+  // returns { 'YYYY-MM-DD': {lift:bool, cardio:bool} }
+  const map = {};
+  Object.values(STATE.logs).forEach(arr=>{
+    arr.forEach(entry=>{
+      if(entry.logged && entry.loggedAt){
+        const d = new Date(entry.loggedAt+'T00:00:00');
+        if(d.getFullYear()===year && d.getMonth()===month){
+          map[entry.loggedAt] = map[entry.loggedAt] || {lift:false, cardio:false};
+          map[entry.loggedAt].lift = true;
+        }
+      }
+    });
+  });
+  STATE.cardio.forEach(c=>{
+    const d = new Date(c.date+'T00:00:00');
+    if(d.getFullYear()===year && d.getMonth()===month){
+      map[c.date] = map[c.date] || {lift:false, cardio:false};
+      map[c.date].cardio = true;
+    }
+  });
+  return map;
+}
+
+const SPLIT_LABEL = {push:'Push', pull:'Pull', legs:'Legs'};
+
+function renderCalendar(){
+  const year = calendarViewDate.getFullYear();
+  const month = calendarViewDate.getMonth();
+  document.getElementById('cal-month-label').textContent =
+    calendarViewDate.toLocaleDateString(undefined, {month:'long', year:'numeric'});
+
+  const weekdaysEl = document.getElementById('calendar-weekdays');
+  weekdaysEl.innerHTML = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=>`<span>${d}</span>`).join('');
+
+  const activityMap = getMonthActivityMap(year, month);
+  const todayStr = todayISO();
+
+  const firstOfMonth = new Date(year, month, 1);
+  const startOffset = (firstOfMonth.getDay() + 6) % 7; // Monday-first
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+  const daysInPrevMonth = new Date(year, month, 0).getDate();
+
+  const cells = [];
+  for(let i=startOffset; i>0; i--) cells.push({ day: daysInPrevMonth-i+1, otherMonth:true });
+  for(let d=1; d<=daysInMonth; d++) cells.push({ day:d, otherMonth:false });
+  while(cells.length % 7 !== 0) cells.push({ day: cells.length - (startOffset+daysInMonth) + 1, otherMonth:true });
+
+  const grid = document.getElementById('calendar-grid');
+  grid.innerHTML = '';
+  cells.forEach(cell=>{
+    const btn = document.createElement('button');
+    const dateStr = cell.otherMonth ? null : `${year}-${String(month+1).padStart(2,'0')}-${String(cell.day).padStart(2,'0')}`;
+    const activity = dateStr ? activityMap[dateStr] : null;
+    btn.className = 'cal-day' + (cell.otherMonth?' other-month':'') + (activity?' has-activity':'') +
+      (dateStr===todayStr?' today':'') + (dateStr===calendarSelectedDate?' selected':'');
+    btn.innerHTML = `<span>${cell.day}</span>` + (activity ? `<span class="cal-dots">${activity.lift?'<span class="cal-dot lift"></span>':''}${activity.cardio?'<span class="cal-dot cardio"></span>':''}</span>` : '');
+    if(activity){
+      btn.addEventListener('click', ()=>{
+        calendarSelectedDate = dateStr;
+        renderCalendar();
+        renderCalendarDayDetail(dateStr);
+      });
+    } else {
+      btn.disabled = true;
+    }
+    grid.appendChild(btn);
+  });
+}
+
+function renderCalendarDayDetail(dateStr){
+  const el = document.getElementById('calendar-day-detail');
+  if(!dateStr){ el.innerHTML = ''; return; }
+  const { sessions, cardio } = getDayActivity(dateStr);
+  const niceDate = new Date(dateStr+'T00:00:00').toLocaleDateString(undefined, {weekday:'long', day:'numeric', month:'long'});
+
+  if(sessions.length===0 && cardio.length===0){
+    el.innerHTML = `<div class="cal-detail-title">${niceDate}</div><div class="empty-state" style="padding:16px 4px;">Nothing logged.</div>`;
+    return;
+  }
+
+  let html = `<div class="cal-detail-title">${niceDate}</div>`;
+  sessions.forEach(s=>{
+    html += `<div class="cal-session"><div class="cal-session-head">${SPLIT_LABEL[s.split]||s.split} · Block ${s.block} · Week ${s.week}</div>`;
+    Object.values(s.exercises).forEach(ex=>{
+      const setsText = ex.sets.map(st=>`${fmt(st.weight)||'—'}×${st.reps||'—'}`).join(', ');
+      html += `<div class="cal-ex-line"><span>${escapeAttr(ex.name)}</span><span>${escapeAttr(setsText)}</span></div>`;
+    });
+    html += `</div>`;
+  });
+  cardio.forEach(c=>{
+    html += `<div class="cal-session"><div class="cal-session-head cardio-head">${escapeAttr(c.activity)}</div>
+      <div class="cal-ex-line"><span>Distance / Duration</span><span>${c.distance||0} km · ${c.duration||0} min${c.hr?' · '+c.hr+' bpm':''}</span></div></div>`;
+  });
+  el.innerHTML = html;
+}
+
+function openCalendarModal(){
+  const now = new Date();
+  calendarViewDate = new Date(now.getFullYear(), now.getMonth(), 1);
+  calendarSelectedDate = null;
+  renderCalendar();
+  renderCalendarDayDetail(null);
+  showOverlay('calendar-overlay');
 }
 
 /* ---------------- init & wiring ---------------- */
@@ -1202,6 +1489,20 @@ document.addEventListener('DOMContentLoaded', ()=>{
   renderCloudStatus();
 
   document.getElementById('history-btn').addEventListener('click', openHistoryModal);
+  document.getElementById('calendar-btn').addEventListener('click', openCalendarModal);
+  document.getElementById('cal-prev-btn').addEventListener('click', ()=>{
+    calendarViewDate.setMonth(calendarViewDate.getMonth()-1);
+    calendarSelectedDate = null;
+    renderCalendar();
+    renderCalendarDayDetail(null);
+  });
+  document.getElementById('cal-next-btn').addEventListener('click', ()=>{
+    calendarViewDate.setMonth(calendarViewDate.getMonth()+1);
+    calendarSelectedDate = null;
+    renderCalendar();
+    renderCalendarDayDetail(null);
+  });
+  document.getElementById('calendar-close-btn').addEventListener('click', ()=>hideOverlay('calendar-overlay'));
   document.getElementById('advance-week-btn').addEventListener('click', ()=>{
     if(STATE.week < 5){
       STATE.week += 1;
@@ -1241,6 +1542,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
   wireOverlayDismiss('cardio-sheet-overlay', ()=>hideOverlay('cardio-sheet-overlay'));
   wireOverlayDismiss('rollover-overlay', closeRolloverModal);
   wireOverlayDismiss('history-overlay', ()=>hideOverlay('history-overlay'));
+  wireOverlayDismiss('calendar-overlay', ()=>hideOverlay('calendar-overlay'));
   wireOverlayDismiss('confirm-overlay', ()=>document.getElementById('confirm-cancel').click());
   wireOverlayDismiss('text-input-overlay', ()=>document.getElementById('text-input-cancel').click());
   wireSheetSwipeDown('ex-sheet', closeExerciseSheet);
