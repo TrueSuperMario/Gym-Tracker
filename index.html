@@ -276,6 +276,20 @@ input, select, textarea{ font-size:16px !important; }
 .trend-row .up{ color:var(--emerald); font-weight:700; }
 .trend-row .flat{ color:var(--muted); }
 
+
+/* ---- weight tab ---- */
+.weight-stats{ display:flex; justify-content:space-between; gap:8px; margin-bottom:12px; }
+.weight-stat{ flex:1; background:var(--surface-2); border:1px solid var(--border); border-radius:12px; padding:10px; text-align:center; }
+.weight-stat b{ display:block; font-size:18px; font-weight:800; }
+.weight-stat span{ font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; font-weight:700; }
+.weight-stat b.up{ color:var(--amber); }
+.weight-stat b.down{ color:var(--emerald); }
+.weight-chart{ width:100%; height:auto; display:block; }
+.weight-row{ display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--border); font-size:14px; }
+.weight-row:last-child{ border-bottom:none; }
+.weight-row .w-date{ color:var(--muted); font-size:13px; }
+.weight-row .w-val{ font-weight:800; }
+
 .calendar-header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
 .calendar-weekdays{ display:grid; grid-template-columns:repeat(7,1fr); gap:4px; margin-bottom:4px; }
 .calendar-weekdays span{ text-align:center; font-size:10px; font-weight:700; color:var(--muted); text-transform:uppercase; }
@@ -913,7 +927,7 @@ function renderWeekPills(){
 function renderSplitTabs(){
   const wrap = document.getElementById('split-tabs');
   wrap.innerHTML = '';
-  const tabs = [['push','Push'],['pull','Pull'],['legs','Legs'],['cardio','Cardio']];
+  const tabs = [['push','Push'],['pull','Pull'],['legs','Legs'],['cardio','Cardio'],['weight','Weight']];
   tabs.forEach(([key,label])=>{
     const b = document.createElement('button');
     b.className = 'split-tab' + (STATE.split===key ? ' active':'');
@@ -925,7 +939,9 @@ function renderSplitTabs(){
 }
 
 function syncFab(){
-  document.getElementById('fab').textContent = '+';
+  const fab = document.getElementById('fab');
+  fab.textContent = '+';
+  fab.style.display = STATE.split==='weight' ? 'none' : '';
 }
 
 function renderContent(){
@@ -942,6 +958,7 @@ function renderContent(){
   }
 
   if(STATE.split==='cardio'){ renderCardio(el); return; }
+  if(STATE.split==='weight'){ renderWeight(el); return; }
 
   const list = STATE.exercises.filter(e=>e.split===STATE.split);
   if(list.length===0){
@@ -1134,6 +1151,146 @@ function renderSetRow(ex, entry, idx){
 
 function escapeAttr(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
+/* ---------------- weight log ---------------- */
+function getWeights(){
+  if(!Array.isArray(STATE.weights)) STATE.weights = [];
+  return STATE.weights;
+}
+
+function saveWeightEntry(date, kg){
+  const list = getWeights();
+  const i = list.findIndex(w=>w.date===date);
+  if(i>=0) list[i].kg = kg; else list.push({date, kg});
+  list.sort((a,b)=> a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+  saveState();
+}
+
+function shortDate(iso){
+  return new Date(iso+'T00:00:00').toLocaleDateString(undefined, {day:'numeric', month:'short'});
+}
+
+function weightChartSVG(list){
+  const W=300, H=150, padL=36, padR=12, padT=12, padB=24;
+  const times = list.map(w=>new Date(w.date+'T00:00:00').getTime());
+  const vals = list.map(w=>w.kg);
+  let min = Math.min(...vals), max = Math.max(...vals);
+  if(max - min < 1){ const mid=(max+min)/2; min = mid-0.5; max = mid+0.5; }
+  else { const pad=(max-min)*0.15; min -= pad; max += pad; }
+  const tmin = times[0], tmax = times[times.length-1];
+  const innerW = W-padL-padR, innerH = H-padT-padB;
+  const xOf = t => tmax===tmin ? padL+innerW/2 : padL + ((t-tmin)/(tmax-tmin))*innerW;
+  const yOf = v => padT + (1-(v-min)/(max-min))*innerH;
+  const pts = list.map((w,i)=>[xOf(times[i]), yOf(w.kg)]);
+
+  const grid = [max, (max+min)/2, min].map(v=>{
+    const y = yOf(v);
+    return `<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" style="stroke:var(--border)" stroke-width="1"/>` +
+           `<text x="${padL-6}" y="${y+3}" text-anchor="end" font-size="9" style="fill:var(--muted)">${(Math.round(v*10)/10).toFixed(1)}</text>`;
+  }).join('');
+  const line = pts.length>1 ? `<polyline points="${pts.map(p=>p.join(',')).join(' ')}" fill="none" style="stroke:var(--emerald)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>` : '';
+  const dots = pts.map(p=>`<circle cx="${p[0]}" cy="${p[1]}" r="3.5" style="fill:var(--emerald)"/>`).join('');
+  const xLabels = pts.length>1
+    ? `<text x="${padL}" y="${H-6}" text-anchor="start" font-size="9" style="fill:var(--muted)">${shortDate(list[0].date)}</text>` +
+      `<text x="${W-padR}" y="${H-6}" text-anchor="end" font-size="9" style="fill:var(--muted)">${shortDate(list[list.length-1].date)}</text>`
+    : `<text x="${padL+innerW/2}" y="${H-6}" text-anchor="middle" font-size="9" style="fill:var(--muted)">${shortDate(list[0].date)}</text>`;
+
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('class', 'weight-chart');
+  svg.innerHTML = grid + line + dots + xLabels;
+  return svg;
+}
+
+function renderWeight(el){
+  const list = getWeights();
+
+  // --- entry form ---
+  const form = document.createElement('div');
+  form.className = 'ex-card';
+  const last = list.length ? list[list.length-1] : null;
+  form.innerHTML = `
+    <div class="cal-detail-title">Log weight</div>
+    <div class="two-col">
+      <div class="field"><label>Date</label><input type="date" id="w-date"></div>
+      <div class="field"><label>Weight (kg)</label><input type="number" id="w-kg" inputmode="decimal" step="0.1" placeholder="${last ? last.kg : '80.0'}"></div>
+    </div>
+    <button class="btn primary" id="w-save" style="width:100%;">Save weight</button>`;
+  el.appendChild(form);
+
+  const dateInput = form.querySelector('#w-date');
+  const kgInput = form.querySelector('#w-kg');
+  dateInput.value = todayISO();
+  const fillForDate = ()=>{
+    const existing = getWeights().find(w=>w.date===dateInput.value);
+    kgInput.value = existing ? existing.kg : '';
+  };
+  fillForDate();
+  dateInput.addEventListener('change', fillForDate);
+  form.querySelector('#w-save').addEventListener('click', ()=>{
+    const kg = parseFloat(kgInput.value);
+    if(!dateInput.value){ showToast('Pick a date'); return; }
+    if(!isFinite(kg) || kg < 20 || kg > 400){ showToast('Enter a weight in kg'); return; }
+    saveWeightEntry(dateInput.value, Math.round(kg*10)/10);
+    showToast(`Saved ${Math.round(kg*10)/10} kg · ${shortDate(dateInput.value)}`);
+    renderContent();
+  });
+
+  if(list.length===0){
+    const es = document.createElement('div');
+    es.className = 'empty-state';
+    es.innerHTML = `No weigh-ins yet. Enter one above — log as often as you like, one per day.`;
+    el.appendChild(es);
+    return;
+  }
+
+  // --- stats + chart ---
+  const first = list[0], latest = list[list.length-1];
+  const delta = Math.round((latest.kg - first.kg)*10)/10;
+  const chartCard = document.createElement('div');
+  chartCard.className = 'ex-card';
+  chartCard.innerHTML = `
+    <div class="weight-stats">
+      <div class="weight-stat"><b>${fmt(latest.kg)}</b><span>Latest kg</span></div>
+      <div class="weight-stat"><b class="${delta>0?'up':delta<0?'down':''}">${delta>0?'+':''}${fmt(delta)}</b><span>Since ${shortDate(first.date)}</span></div>
+      <div class="weight-stat"><b>${list.length}</b><span>Weigh-ins</span></div>
+    </div>`;
+  chartCard.appendChild(weightChartSVG(list));
+  if(list.length===1){
+    const note = document.createElement('div');
+    note.className = 'backup-note';
+    note.style.textAlign = 'center';
+    note.textContent = 'Add another day to see a trend line.';
+    chartCard.appendChild(note);
+  }
+  el.appendChild(chartCard);
+
+  // --- entries list ---
+  const listCard = document.createElement('div');
+  listCard.className = 'ex-card';
+  listCard.innerHTML = `<div class="cal-detail-title">History</div>`;
+  [...list].reverse().forEach(w=>{
+    const row = document.createElement('div');
+    row.className = 'weight-row';
+    row.innerHTML = `<span class="w-date">${new Date(w.date+'T00:00:00').toLocaleDateString(undefined,{weekday:'short', day:'numeric', month:'short', year:'numeric'})}</span>
+      <span><span class="w-val">${fmt(w.kg)} kg</span></span>`;
+    const del = document.createElement('button');
+    del.className = 'mini-btn danger';
+    del.title = 'Delete';
+    del.textContent = '✕';
+    del.style.marginLeft = '10px';
+    del.addEventListener('click', async ()=>{
+      const ok = await askForConfirm({title:'Delete weigh-in?', message:`Remove ${fmt(w.kg)} kg on ${shortDate(w.date)}?`, confirmLabel:'Delete', danger:true});
+      if(ok){
+        STATE.weights = getWeights().filter(x=>x.date!==w.date);
+        saveState(); renderContent();
+      }
+    });
+    row.lastElementChild.appendChild(del);
+    listCard.appendChild(row);
+  });
+  el.appendChild(listCard);
+}
+
 /* ---------------- cardio ---------------- */
 function renderCardio(el){
   const list = STATE.cardio;
@@ -1168,7 +1325,7 @@ function openExerciseSheet(ex){
   editingExId = ex ? ex.id : null;
   document.getElementById('ex-sheet-title').textContent = ex ? 'Edit Exercise' : 'Add Exercise';
   document.getElementById('f-name').value = ex ? ex.name : '';
-  document.getElementById('f-split').value = ex ? ex.split : STATE.split==='cardio' ? 'push' : STATE.split;
+  document.getElementById('f-split').value = ex ? ex.split : (STATE.split==='cardio' || STATE.split==='weight') ? 'push' : STATE.split;
   document.getElementById('f-sets').value = ex ? ex.sets : 4;
   document.getElementById('f-baseline').value = ex ? ex.baseline1RM : '';
   document.getElementById('f-reps-target').value = ex ? ex.repsTarget : 5;
