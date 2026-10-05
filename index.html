@@ -1015,7 +1015,7 @@ function renderExerciseCard(ex){
   if(ex.progression){
     targetLine.innerHTML = `Target: <b>${fmt(targetWeightFor(ex, STATE.week))} kg × ${escapeAttr(String(ex.repsTarget))}</b> &nbsp;·&nbsp; Baseline 1RM: <b>${fmt(ex.baseline1RM)} kg</b>`;
   } else {
-    targetLine.innerHTML = `Target: <b>${ex.accessoryWeight>0? fmt(ex.accessoryWeight)+' kg':'Bodyweight'} × ${escapeAttr(ex.accessoryReps)}</b>`;
+    targetLine.innerHTML = `Target: <b>${ex.accessoryWeight!==0? fmt(ex.accessoryWeight)+' kg':'Bodyweight'} × ${escapeAttr(ex.accessoryReps)}</b>`;
   }
   card.appendChild(targetLine);
 
@@ -1127,7 +1127,7 @@ function renderSetRow(ex, entry, idx){
   }
   updateProjection();
 
-  fields.querySelector('.w-minus').addEventListener('click', ()=>{ wInput.value = Math.max(0, (parseFloat(wInput.value)||0) - ROUND_STEP); updateProjection(); });
+  fields.querySelector('.w-minus').addEventListener('click', ()=>{ wInput.value = (parseFloat(wInput.value)||0) - ROUND_STEP; updateProjection(); });
   fields.querySelector('.w-plus').addEventListener('click', ()=>{ wInput.value = (parseFloat(wInput.value)||0) + ROUND_STEP; updateProjection(); });
   fields.querySelector('.r-minus').addEventListener('click', ()=>{ rInput.value = Math.max(0, (parseInt(rInput.value,10)||0) - 1); updateProjection(); });
   fields.querySelector('.r-plus').addEventListener('click', ()=>{ rInput.value = (parseInt(rInput.value,10)||0) + 1; updateProjection(); });
