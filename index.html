@@ -206,6 +206,19 @@ input, select, textarea{ font-size:16px !important; }
 }
 .cardio-entry .ce-main{ font-size:13px; font-weight:700; }
 .cardio-entry .ce-sub{ font-size:11px; color:var(--muted); margin-top:2px; }
+.cardio-entry{ cursor:pointer; gap:10px; }
+.cardio-hint{ font-size:11px; color:var(--muted); text-align:center; margin:0 0 10px; }
+.cardio-last{ font-size:12px; color:var(--amber); font-weight:600; margin:-6px 0 12px; }
+.cardio-last:empty{ display:none; }
+.dur-row{ display:flex; gap:8px; }
+.dur-cell{ flex:1; min-width:0; }
+.dur-cell input{ text-align:center; }
+.pace-readout{
+  background:var(--surface-2); border:1px solid var(--border); border-radius:12px;
+  padding:11px 12px; margin-bottom:12px; font-size:13px; color:var(--muted);
+  display:flex; justify-content:space-between; align-items:center;
+}
+.pace-readout b{ color:var(--emerald); font-weight:800; font-size:15px; }
 
 /* ---- sheet / modal overlay ---- */
 .overlay{
@@ -418,19 +431,30 @@ input, select, textarea{ font-size:16px !important; }
 <div class="overlay hidden" id="cardio-sheet-overlay">
   <div class="sheet" id="cardio-sheet">
     <div class="sheet-handle"></div>
-    <h2>Log Cardio</h2>
-    <div class="field"><label>Date</label><input type="date" id="c-date"></div>
-    <div class="field">
-      <label>Activity</label>
-      <select id="c-activity">
-        <option>Run</option><option>Bike</option><option>Row</option><option>Swim</option><option>Other</option>
-      </select>
+    <h2 id="cardio-sheet-title">Log Cardio</h2>
+    <div class="cardio-last" id="c-last"></div>
+    <div class="two-col">
+      <div class="field"><label>Date</label><input type="date" id="c-date"></div>
+      <div class="field">
+        <label>Activity</label>
+        <select id="c-activity">
+          <option>Run</option><option>Bike</option><option>Row</option><option>Swim</option><option>Other</option>
+        </select>
+      </div>
     </div>
     <div class="two-col">
-      <div class="field"><label>Distance (km)</label><input type="number" id="c-distance" inputmode="decimal" placeholder="5"></div>
-      <div class="field"><label>Duration (min)</label><input type="number" id="c-duration" inputmode="decimal" placeholder="30"></div>
+      <div class="field"><label>Distance (km)</label><input type="number" id="c-distance" inputmode="decimal" placeholder="5.2"></div>
+      <div class="field"><label>Avg HR (bpm)</label><input type="number" id="c-hr" inputmode="numeric" placeholder="145"></div>
     </div>
-    <div class="field"><label>Avg heart rate (bpm)</label><input type="number" id="c-hr" inputmode="numeric" placeholder="145"></div>
+    <div class="field">
+      <label>Time</label>
+      <div class="dur-row">
+        <div class="dur-cell"><input type="number" id="c-dur-h" inputmode="numeric" min="0" placeholder="0"><span class="stepper-label">hr</span></div>
+        <div class="dur-cell"><input type="number" id="c-dur-m" inputmode="numeric" min="0" placeholder="28"><span class="stepper-label">min</span></div>
+        <div class="dur-cell"><input type="number" id="c-dur-s" inputmode="numeric" min="0" placeholder="45"><span class="stepper-label">sec</span></div>
+      </div>
+    </div>
+    <div class="pace-readout" id="c-pace"></div>
     <div class="sheet-actions">
       <button class="btn" id="cardio-cancel-btn">Cancel</button>
       <button class="btn primary" id="cardio-save-btn">Save</button>
@@ -1292,31 +1316,149 @@ function renderWeight(el){
 }
 
 /* ---------------- cardio ---------------- */
+// Durations are stored as whole seconds (durationSec). Older entries only have `duration`
+// in minutes, so cardioSec() falls back to that and they keep working unchanged.
+function cardioSec(c){
+  if(Number.isFinite(c.durationSec)) return c.durationSec;
+  return Math.round((c.duration||0)*60);
+}
+function fmtDuration(sec){
+  sec = Math.round(sec);
+  const h = Math.floor(sec/3600), m = Math.floor((sec%3600)/60), s = sec%60;
+  const pad = n => String(n).padStart(2,'0');
+  return h>0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
+function fmtMinSec(sec){
+  sec = Math.round(sec);
+  return `${Math.floor(sec/60)}:${String(sec%60).padStart(2,'0')}`;
+}
+function paceFor(activity, km, sec){
+  if(!(km>0) || !(sec>0)) return null;
+  if(activity==='Bike') return `${(Math.round(km/(sec/3600)*10)/10).toFixed(1)} km/h`;
+  if(activity==='Row')  return `${fmtMinSec(sec/(km*2))} /500m`;
+  if(activity==='Swim') return `${fmtMinSec(sec/(km*10))} /100m`;
+  return `${fmtMinSec(sec/km)} /km`;
+}
+function cardioSummary(c){
+  const sec = cardioSec(c), parts = [];
+  if(c.distance>0) parts.push(`${Math.round(c.distance*100)/100} km`);
+  if(sec>0) parts.push(fmtDuration(sec));
+  const pace = paceFor(c.activity, c.distance, sec);
+  if(pace) parts.push(pace);
+  if(c.hr) parts.push(`${c.hr} bpm`);
+  return parts.join(' · ');
+}
+function sortedCardio(){
+  // newest date first; same-day entries keep their saved order (newest saved first)
+  return [...STATE.cardio].sort((a,b)=> a.date<b.date ? 1 : a.date>b.date ? -1 : 0);
+}
+
 function renderCardio(el){
-  const list = STATE.cardio;
-  if(list.length===0){
+  if(STATE.cardio.length===0){
     const es = document.createElement('div');
     es.className = 'empty-state';
     es.innerHTML = `No cardio logged yet. Tap + to add a run, ride, or row.`;
     el.appendChild(es);
     return;
   }
-  list.forEach((c, i)=>{
+  const hint = document.createElement('div');
+  hint.className = 'cardio-hint';
+  hint.textContent = 'Tap an entry to edit it';
+  el.appendChild(hint);
+
+  sortedCardio().forEach(c=>{
     const row = document.createElement('div');
     row.className = 'cardio-entry';
     row.innerHTML = `
       <div>
-        <div class="ce-main">${escapeAttr(c.activity)} · ${c.date}</div>
-        <div class="ce-sub">${c.distance||0} km · ${c.duration||0} min${c.hr? ' · '+c.hr+' bpm':''}</div>
+        <div class="ce-main">${escapeAttr(c.activity)} · ${escapeAttr(c.date)}</div>
+        <div class="ce-sub">${escapeAttr(cardioSummary(c) || 'No details')}</div>
       </div>
       <button class="mini-btn danger" title="Delete">✕</button>
     `;
-    row.querySelector('.mini-btn').addEventListener('click', ()=>{
-      STATE.cardio = STATE.cardio.filter((_,idx)=>idx!==i);
-      saveState(); renderContent();
+    row.addEventListener('click', ()=>openCardioSheet(c));
+    row.querySelector('.mini-btn').addEventListener('click', async (e)=>{
+      e.stopPropagation();
+      const ok = await askForConfirm({title:'Delete cardio entry?', message:`${c.activity} on ${c.date}${cardioSummary(c) ? ' ('+cardioSummary(c)+')' : ''}`, confirmLabel:'Delete', danger:true});
+      if(ok){
+        STATE.cardio = STATE.cardio.filter(x=>x!==c);
+        saveState(); renderContent();
+      }
     });
     el.appendChild(row);
   });
+}
+
+/* ---- cardio sheet (add + edit) ---- */
+let editingCardio = null; // the entry object being edited, or null when adding
+
+function readCardioForm(){
+  const num = id => Math.max(0, parseFloat(document.getElementById(id).value) || 0);
+  const sec = Math.round(num('c-dur-h')*3600 + num('c-dur-m')*60 + num('c-dur-s'));
+  return {
+    date: document.getElementById('c-date').value || todayISO(),
+    activity: document.getElementById('c-activity').value,
+    distance: Math.round(num('c-distance')*100)/100,
+    sec,
+    hr: Math.round(num('c-hr'))
+  };
+}
+
+function updateCardioForm(){
+  const f = readCardioForm();
+  const pace = paceFor(f.activity, f.distance, f.sec);
+  const label = f.activity==='Bike' ? 'Speed' : 'Pace';
+  document.getElementById('c-pace').innerHTML = pace
+    ? `<span>${label}</span><b>${pace}</b>`
+    : `<span>Enter distance and time to see pace</span>`;
+
+  const last = sortedCardio().find(c=>c.activity===f.activity && c!==editingCardio);
+  const lastEl = document.getElementById('c-last');
+  if(last){
+    const name = f.activity==='Other' ? 'Last session' : `Last ${f.activity.toLowerCase()}`;
+    lastEl.textContent = `${name}: ${cardioSummary(last)}`;
+  } else {
+    lastEl.textContent = '';
+  }
+}
+
+function openCardioSheet(entry){
+  editingCardio = entry || null;
+  document.getElementById('cardio-sheet-title').textContent = entry ? 'Edit Cardio' : 'Log Cardio';
+  document.getElementById('cardio-save-btn').textContent = entry ? 'Save changes' : 'Save';
+  const sec = entry ? cardioSec(entry) : 0;
+  const h = Math.floor(sec/3600), m = Math.floor((sec%3600)/60), s = sec%60;
+  document.getElementById('c-date').value = entry ? entry.date : todayISO();
+  document.getElementById('c-activity').value = entry ? entry.activity : ((sortedCardio()[0] || {}).activity || 'Run');
+  document.getElementById('c-distance').value = entry && entry.distance>0 ? entry.distance : '';
+  document.getElementById('c-hr').value = entry && entry.hr ? entry.hr : '';
+  document.getElementById('c-dur-h').value = sec>0 && h>0 ? h : '';
+  document.getElementById('c-dur-m').value = sec>0 && (h>0 || m>0) ? m : '';
+  document.getElementById('c-dur-s').value = sec>0 ? s : '';
+  updateCardioForm();
+  showOverlay('cardio-sheet-overlay');
+}
+
+function saveCardioForm(){
+  const f = readCardioForm();
+  if(!(f.distance>0) && !(f.sec>0)){ showToast('Add a distance or a time'); return; }
+  const entry = {
+    date: f.date, activity: f.activity, distance: f.distance,
+    durationSec: f.sec,
+    duration: Math.round(f.sec/60*100)/100, // minutes, kept so older backups/readers still make sense
+    hr: f.hr
+  };
+  if(editingCardio){
+    Object.assign(editingCardio, entry);
+    showToast('Cardio updated');
+  } else {
+    STATE.cardio.unshift(entry);
+    showToast('Cardio logged');
+  }
+  editingCardio = null;
+  saveState();
+  hideOverlay('cardio-sheet-overlay');
+  renderContent();
 }
 
 /* ---------------- add/edit exercise sheet ---------------- */
@@ -1625,7 +1767,7 @@ function renderCalendarDayDetail(dateStr){
   });
   cardio.forEach(c=>{
     html += `<div class="cal-session"><div class="cal-session-head cardio-head">${escapeAttr(c.activity)}</div>
-      <div class="cal-ex-line"><span>Distance / Duration</span><span>${c.distance||0} km · ${c.duration||0} min${c.hr?' · '+c.hr+' bpm':''}</span></div></div>`;
+      <div class="cal-ex-line"><span style="color:var(--text)">${escapeAttr(cardioSummary(c) || 'No details')}</span></div></div>`;
   });
   el.innerHTML = html;
 }
@@ -1684,12 +1826,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
 
   document.getElementById('fab').addEventListener('click', ()=>{
     if(STATE.split==='cardio'){
-      document.getElementById('c-date').value = new Date().toISOString().slice(0,10);
-      document.getElementById('c-activity').value = 'Run';
-      document.getElementById('c-distance').value = '';
-      document.getElementById('c-duration').value = '';
-      document.getElementById('c-hr').value = '';
-      showOverlay('cardio-sheet-overlay');
+      openCardioSheet(null);
     } else {
       openExerciseSheet(null);
     }
@@ -1734,21 +1871,11 @@ document.addEventListener('DOMContentLoaded', ()=>{
     showToast('Saved');
   });
 
-  document.getElementById('cardio-cancel-btn').addEventListener('click', ()=>hideOverlay('cardio-sheet-overlay'));
-  document.getElementById('cardio-save-btn').addEventListener('click', ()=>{
-    const entry = {
-      date: document.getElementById('c-date').value || new Date().toISOString().slice(0,10),
-      activity: document.getElementById('c-activity').value,
-      distance: parseFloat(document.getElementById('c-distance').value) || 0,
-      duration: parseFloat(document.getElementById('c-duration').value) || 0,
-      hr: parseInt(document.getElementById('c-hr').value,10) || 0
-    };
-    STATE.cardio.unshift(entry);
-    saveState();
-    hideOverlay('cardio-sheet-overlay');
-    renderContent();
-    showToast('Cardio logged');
-  });
+  document.getElementById('cardio-cancel-btn').addEventListener('click', ()=>{ editingCardio = null; hideOverlay('cardio-sheet-overlay'); });
+  document.getElementById('cardio-save-btn').addEventListener('click', saveCardioForm);
+  ['c-distance','c-dur-h','c-dur-m','c-dur-s','c-hr'].forEach(id=>
+    document.getElementById(id).addEventListener('input', updateCardioForm));
+  document.getElementById('c-activity').addEventListener('change', updateCardioForm);
 
   document.getElementById('rollover-cancel-btn').addEventListener('click', closeRolloverModal);
 });
