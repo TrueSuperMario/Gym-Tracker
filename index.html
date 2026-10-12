@@ -192,6 +192,12 @@ input, select, textarea{ font-size:16px !important; }
   background:transparent; color:var(--muted); font-size:12px; margin-top:2px;
 }
 
+.restart-week-btn{
+  width:100%; min-height:44px; margin:14px 0 90px; padding:10px; border-radius:12px;
+  border:1px solid var(--border); background:transparent; color:var(--muted); font-size:13px; font-weight:600;
+}
+.restart-week-btn:active{ background:var(--card, #1a1f2b); }
+
 .fab{
   position:fixed; right:18px; bottom:calc(env(safe-area-inset-bottom,0px) + 20px);
   width:56px; height:56px; border-radius:28px; border:none;
@@ -612,7 +618,7 @@ function seedExercises(){
 
 /* ---------------- state ---------------- */
 function defaultState(){
-  return { block:1, week:1, split:'push', exercises: seedExercises(), logs:{}, cardio:[], history:[], seeded:true };
+  return { block:1, week:1, split:'push', exercises: seedExercises(), logs:{}, archive:[], cardio:[], history:[], seeded:true };
 }
 let STATE = null;
 
@@ -923,6 +929,57 @@ function getLogs(ex){
   STATE.logs[key] = arr;
   return arr;
 }
+/* ---------------- restart week (archive) ---------------- */
+function weekLogKeys(block, week){
+  return Object.keys(STATE.logs).filter(k=>{
+    const [b,w] = k.split('_');
+    return +b===block && +w===week;
+  });
+}
+function countLoggedSetsThisWeek(){
+  let n = 0;
+  weekLogKeys(STATE.block, STATE.week).forEach(k=>{
+    STATE.logs[k].forEach(e=>{ if(e.logged) n++; });
+  });
+  return n;
+}
+async function restartWeek(){
+  const n = countLoggedSetsThisWeek();
+  if(n===0){ showToast('Nothing logged this week yet'); return; }
+  const ok = await askForConfirm({
+    title:`Restart Week ${STATE.week}?`,
+    message:`Your ${n} logged set${n===1?'':'s'} this week will be moved to the archive (not deleted) and every exercise goes back to blank. Cardio and weight entries are not touched.`,
+    confirmLabel:'Restart week'
+  });
+  if(!ok) return;
+  if(!Array.isArray(STATE.archive)) STATE.archive = [];
+  const saved = {};
+  const keys = weekLogKeys(STATE.block, STATE.week);
+  keys.forEach(k=>{
+    if(STATE.logs[k].some(e=>e.logged)) saved[k.split('_')[2]] = STATE.logs[k];
+  });
+  STATE.archive.push({ id: uid(), date: todayISO(), block: STATE.block, week: STATE.week, logs: saved });
+  keys.forEach(k=>{ delete STATE.logs[k]; });
+  saveState();
+  renderAll();
+  showToast(`Week ${STATE.week} restarted`);
+}
+
+/* every logged set ever, live or archived: {block, week, exId, entry, archived} */
+function allLoggedEntries(){
+  const out = [];
+  Object.keys(STATE.logs).forEach(key=>{
+    const [block, week, exId] = key.split('_');
+    STATE.logs[key].forEach(entry=>{ if(entry.logged) out.push({block:+block, week:+week, exId, entry, archived:null}); });
+  });
+  (STATE.archive||[]).forEach(a=>{
+    Object.keys(a.logs).forEach(exId=>{
+      a.logs[exId].forEach(entry=>{ if(entry.logged) out.push({block:a.block, week:a.week, exId, entry, archived:a.id}); });
+    });
+  });
+  return out;
+}
+
 function isAMRAPRow(ex, setIdx){
   return ex.progression && STATE.week===4 && setIdx === ex.sets-1;
 }
@@ -993,6 +1050,11 @@ function renderContent(){
     return;
   }
   list.forEach(ex => el.appendChild(renderExerciseCard(ex)));
+  const restartBtn = document.createElement('button');
+  restartBtn.className = 'restart-week-btn';
+  restartBtn.textContent = 'Restart week';
+  restartBtn.addEventListener('click', restartWeek);
+  el.appendChild(restartBtn);
 }
 
 function isCollapsed(ex){ return ex.collapsed !== false; } // undefined/true => collapsed by default
@@ -1059,16 +1121,21 @@ function renderExerciseCard(ex){
 
 function getLastTimeForExercise(ex, setIdx){
   let best = null;
-  Object.keys(STATE.logs).forEach(key=>{
-    const [block, week, exId] = key.split('_');
-    if(exId !== ex.id) return;
-    if(+block === STATE.block && +week === STATE.week) return; // skip the slot we're currently filling
-    const entry = STATE.logs[key][setIdx];
+  const consider = (entry)=>{
     if(entry && entry.logged && entry.loggedAt){
       if(!best || entry.loggedAt > best.loggedAt){
         best = { weight: entry.weight, reps: entry.reps, loggedAt: entry.loggedAt };
       }
     }
+  };
+  Object.keys(STATE.logs).forEach(key=>{
+    const [block, week, exId] = key.split('_');
+    if(exId !== ex.id) return;
+    if(+block === STATE.block && +week === STATE.week) return; // skip the slot we're currently filling
+    consider(STATE.logs[key][setIdx]);
+  });
+  (STATE.archive||[]).forEach(a=>{
+    if(a.logs[ex.id]) consider(a.logs[ex.id][setIdx]);
   });
   return best;
 }
@@ -1657,19 +1724,15 @@ let calendarViewDate = null; // Date set to the 1st of the viewed month
 let calendarSelectedDate = null; // 'YYYY-MM-DD' or null
 
 function getDayActivity(dateStr){
-  const sessions = {}; // key: block_week_split -> {block, week, split, exercises: {exId: {name, sets:[]}}}
-  Object.keys(STATE.logs).forEach(key=>{
-    const [block, week, exId] = key.split('_');
+  const sessions = {}; // key: block_week_split(_archiveId) -> {block, week, split, archived, exercises: {exId: {name, sets:[]}}}
+  allLoggedEntries().forEach(({block, week, exId, entry, archived})=>{
+    if(entry.loggedAt !== dateStr) return;
     const ex = STATE.exercises.find(e=>e.id===exId);
     if(!ex) return;
-    STATE.logs[key].forEach(entry=>{
-      if(entry.logged && entry.loggedAt === dateStr){
-        const sKey = `${block}_${week}_${ex.split}`;
-        if(!sessions[sKey]) sessions[sKey] = { block:+block, week:+week, split:ex.split, exercises:{} };
-        if(!sessions[sKey].exercises[ex.id]) sessions[sKey].exercises[ex.id] = { name: ex.name, sets: [] };
-        sessions[sKey].exercises[ex.id].sets.push({ weight: entry.weight, reps: entry.reps });
-      }
-    });
+    const sKey = `${block}_${week}_${ex.split}_${archived||'live'}`;
+    if(!sessions[sKey]) sessions[sKey] = { block, week, split:ex.split, archived:!!archived, exercises:{} };
+    if(!sessions[sKey].exercises[ex.id]) sessions[sKey].exercises[ex.id] = { name: ex.name, sets: [] };
+    sessions[sKey].exercises[ex.id].sets.push({ weight: entry.weight, reps: entry.reps });
   });
   const cardio = STATE.cardio.filter(c=>c.date===dateStr);
   return { sessions: Object.values(sessions), cardio };
@@ -1678,16 +1741,14 @@ function getDayActivity(dateStr){
 function getMonthActivityMap(year, month){
   // returns { 'YYYY-MM-DD': {lift:bool, cardio:bool} }
   const map = {};
-  Object.values(STATE.logs).forEach(arr=>{
-    arr.forEach(entry=>{
-      if(entry.logged && entry.loggedAt){
-        const d = new Date(entry.loggedAt+'T00:00:00');
-        if(d.getFullYear()===year && d.getMonth()===month){
-          map[entry.loggedAt] = map[entry.loggedAt] || {lift:false, cardio:false};
-          map[entry.loggedAt].lift = true;
-        }
+  allLoggedEntries().forEach(({entry})=>{
+    if(entry.loggedAt){
+      const d = new Date(entry.loggedAt+'T00:00:00');
+      if(d.getFullYear()===year && d.getMonth()===month){
+        map[entry.loggedAt] = map[entry.loggedAt] || {lift:false, cardio:false};
+        map[entry.loggedAt].lift = true;
       }
-    });
+    }
   });
   STATE.cardio.forEach(c=>{
     const d = new Date(c.date+'T00:00:00');
@@ -1758,7 +1819,7 @@ function renderCalendarDayDetail(dateStr){
 
   let html = `<div class="cal-detail-title">${niceDate}</div>`;
   sessions.forEach(s=>{
-    html += `<div class="cal-session"><div class="cal-session-head">${SPLIT_LABEL[s.split]||s.split} · Block ${s.block} · Week ${s.week}</div>`;
+    html += `<div class="cal-session"><div class="cal-session-head">${SPLIT_LABEL[s.split]||s.split} · Block ${s.block} · Week ${s.week}${s.archived?' · archived attempt':''}</div>`;
     Object.values(s.exercises).forEach(ex=>{
       const setsText = ex.sets.map(st=>`${fmt(st.weight)||'—'}×${st.reps||'—'}`).join(', ');
       html += `<div class="cal-ex-line"><span>${escapeAttr(ex.name)}</span><span>${escapeAttr(setsText)}</span></div>`;
