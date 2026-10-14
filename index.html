@@ -1148,8 +1148,10 @@ function renderSetRow(ex, entry, idx){
   const targetW = targetWeightFor(ex, STATE.week);
   const targetR = ex.progression ? ex.repsTarget : ex.accessoryReps;
   const lastTime = entry.weight==='' ? getLastTimeForExercise(ex, idx) : null;
-  const defaultWeight = entry.weight!=='' ? entry.weight : (lastTime ? lastTime.weight : targetW);
-  const defaultReps = entry.reps!=='' ? entry.reps : (lastTime ? lastTime.reps : (ex.progression ? targetR : ''));
+  const hasDraftW = entry.dw!==undefined && entry.dw!==null;
+  const hasDraftR = entry.dr!==undefined && entry.dr!==null;
+  const defaultWeight = hasDraftW ? entry.dw : (entry.weight!=='' ? entry.weight : (lastTime ? lastTime.weight : targetW));
+  const defaultReps = hasDraftR ? entry.dr : (entry.reps!=='' ? entry.reps : (lastTime ? lastTime.reps : (ex.progression ? targetR : '')));
 
   const top = document.createElement('div');
   top.className = 'set-row-top';
@@ -1218,18 +1220,31 @@ function renderSetRow(ex, entry, idx){
   }
   updateProjection();
 
-  fields.querySelector('.w-minus').addEventListener('click', ()=>{ wInput.value = (parseFloat(wInput.value)||0) - ROUND_STEP; updateProjection(); });
-  fields.querySelector('.w-plus').addEventListener('click', ()=>{ wInput.value = (parseFloat(wInput.value)||0) + ROUND_STEP; updateProjection(); });
-  fields.querySelector('.r-minus').addEventListener('click', ()=>{ rInput.value = Math.max(0, (parseInt(rInput.value,10)||0) - 1); updateProjection(); });
-  fields.querySelector('.r-plus').addEventListener('click', ()=>{ rInput.value = (parseInt(rInput.value,10)||0) + 1; updateProjection(); });
-  wInput.addEventListener('input', updateProjection);
-  rInput.addEventListener('input', updateProjection);
+  // Save what's typed/stepped as a draft right away, so redrawing the other rows
+  // (e.g. after logging a different set) doesn't throw the edit away.
+  function saveDraft(){ entry.dw = wInput.value; entry.dr = rInput.value; saveState(); }
+  fields.querySelector('.w-minus').addEventListener('click', ()=>{ wInput.value = (parseFloat(wInput.value)||0) - ROUND_STEP; updateProjection(); saveDraft(); });
+  fields.querySelector('.w-plus').addEventListener('click', ()=>{ wInput.value = (parseFloat(wInput.value)||0) + ROUND_STEP; updateProjection(); saveDraft(); });
+  fields.querySelector('.r-minus').addEventListener('click', ()=>{ rInput.value = Math.max(0, (parseInt(rInput.value,10)||0) - 1); updateProjection(); saveDraft(); });
+  fields.querySelector('.r-plus').addEventListener('click', ()=>{ rInput.value = (parseInt(rInput.value,10)||0) + 1; updateProjection(); saveDraft(); });
+  wInput.addEventListener('input', ()=>{ updateProjection(); saveDraft(); });
+  rInput.addEventListener('input', ()=>{ updateProjection(); saveDraft(); });
 
   fields.querySelector('.log-btn').addEventListener('click', ()=>{
     entry.weight = wInput.value; entry.reps = rInput.value; entry.logged = true;
+    delete entry.dw; delete entry.dr;
     entry.loggedAt = todayISO();
+    // Accessories follow you: the target becomes whatever you last logged.
+    let toast = `Logged ${wInput.value || 0} kg × ${rInput.value || 0}`;
+    if(!ex.progression){
+      const w = parseFloat(wInput.value);
+      if(isFinite(w) && w !== ex.accessoryWeight){
+        ex.accessoryWeight = w;
+        toast += ` · target now ${fmt(w)} kg`;
+      }
+    }
     saveState(); renderContent();
-    showToast(`Logged ${wInput.value || 0} kg × ${rInput.value || 0}`);
+    showToast(toast);
   });
   fields.querySelector('.set-trash').addEventListener('click', ()=>{
     if(ex.sets<=1){ showToast('Keep at least 1 set'); return; }
